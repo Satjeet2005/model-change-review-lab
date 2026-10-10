@@ -136,7 +136,7 @@ export function ModelGrid(): React.JSX.Element {
                 colSpan={25}
                 className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-neutral-600 bg-neutral-50"
               >
-                Assumption Inputs (Editable)
+                <span className="sticky left-3 inline-block">Assumption Inputs (Editable)</span>
               </td>
             </tr>
 
@@ -187,7 +187,9 @@ export function ModelGrid(): React.JSX.Element {
                 colSpan={25}
                 className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-neutral-600 bg-neutral-50"
               >
-                Calculated Metrics (Read-only · Click cell to inspect trace)
+                <span className="sticky left-3 inline-block">
+                  Calculated Metrics (Read-only · Click cell to inspect trace)
+                </span>
               </td>
             </tr>
 

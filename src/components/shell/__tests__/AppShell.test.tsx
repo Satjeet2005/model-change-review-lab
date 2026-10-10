@@ -53,4 +53,24 @@ describe('AppShell Component (T-028)', () => {
     const resetBtn = screen.getByRole('button', { name: /Reset/ });
     expect(resetBtn).toBeDisabled();
   });
+
+  it('provides responsive header container and scroll-contained navigation on mobile', () => {
+    render(
+      <AppProvider>
+        <AppShell>
+          <div>Content</div>
+        </AppShell>
+      </AppProvider>
+    );
+
+    const header = screen.getByRole('banner');
+    expect(header).toBeInTheDocument();
+
+    const headerContainer = header.firstElementChild;
+    expect(headerContainer).toHaveClass('flex-wrap');
+
+    const nav = screen.getByRole('navigation', { name: 'Main Navigation' });
+    expect(nav).toHaveClass('overflow-x-auto');
+    expect(nav).toHaveClass('min-w-0');
+  });
 });

@@ -28,14 +28,14 @@ export function AppShell({ children }: AppShellProps): React.JSX.Element {
     <div className="min-h-screen bg-neutral-50 text-neutral-900 flex flex-col font-sans">
       {/* Global Application Header */}
       <header className="sticky top-0 z-30 bg-white border-b border-neutral-200 shadow-xs">
-        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 min-h-16 py-2.5 sm:py-0 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           {/* Brand & Disclosure Landmark */}
-          <div className="flex items-center gap-3 shrink-0 flex-wrap">
-            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-neutral-900">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <h1 className="text-base sm:text-xl font-bold tracking-tight text-neutral-900">
               Model Change Review Lab
             </h1>
             <span
-              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-700 border border-neutral-300"
+              className="inline-flex items-center px-2 py-0.5 rounded text-[11px] sm:text-xs font-medium bg-neutral-100 text-neutral-700 border border-neutral-300"
               role="status"
               aria-label="Prototype status"
             >
@@ -45,7 +45,7 @@ export function AppShell({ children }: AppShellProps): React.JSX.Element {
 
           {/* Navigation Tabs */}
           <nav
-            className="flex items-center gap-1 overflow-x-auto py-1"
+            className="flex items-center gap-1 overflow-x-auto py-1 max-w-full min-w-0"
             aria-label="Main Navigation"
           >
             {NAV_ITEMS.map((item) => {
