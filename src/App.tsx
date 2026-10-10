@@ -1,9 +1,15 @@
-export function App() {
+import React from 'react';
+import { AppProvider } from '@/state/AppProvider';
+import { AppShell } from '@/components/shell/AppShell';
+import { ModelPage } from '@/pages/ModelPage';
+
+export function App(): React.JSX.Element {
   return (
-    <main>
-      <h1>Model Change Review Lab</h1>
-      <p>Phase 1 Domain Foundation initialized.</p>
-    </main>
+    <AppProvider>
+      <AppShell>
+        <ModelPage />
+      </AppShell>
+    </AppProvider>
   );
 }
 
