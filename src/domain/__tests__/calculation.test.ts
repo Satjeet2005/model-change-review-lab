@@ -54,6 +54,31 @@ describe('Calculation Engine & Transactions (T-018 / PRD Tests 3-12)', () => {
     expect(m07.payroll).toBe(408000);
     expect(m07.totalOperatingExpense).toBe(648000);
     expect(m07.ebitda).toBe(243514.31);
+
+    // M24 Independent Verification (24-month horizon terminus):
+    // Starting Revenue: 750,000 compounding at 2.5% monthly across 24 periods = 1,356,544.45
+    // Total FTE = 18 (eng) + 24 (other) = 42
+    // Payroll = 42 * 12,000 = 504,000.00
+    // Total OpEx = 504,000 + 240,000 = 744,000.00
+    // EBITDA = 1,356,544.45 - 744,000 = 612,544.45
+    // Ending Cash = rolling sum starting from 3,000,000 + sum(EBITDA M01..M24) = 11,740,322.82
+    const m24 = result.months[23]!;
+    expect(m24.period).toBe(24);
+    expect(m24.revenue).toBe(1356544.45);
+    expect(m24.totalFte).toBe(42);
+    expect(m24.payroll).toBe(504000);
+    expect(m24.totalOperatingExpense).toBe(744000);
+    expect(m24.ebitda).toBe(612544.45);
+    expect(m24.endingCash).toBe(11740322.82);
+
+    // Calculated Summary Metrics Verification:
+    expect(result.summary.m24Revenue).toBe(1356544.45);
+    expect(result.summary.m24TotalFte).toBe(42);
+    expect(result.summary.m24Payroll).toBe(504000);
+    expect(result.summary.m24TotalOperatingExpense).toBe(744000);
+    expect(result.summary.m24Ebitda).toBe(612544.45);
+    expect(result.summary.m24EndingCash).toBe(11740322.82);
+    expect(result.summary.cumulativeRevenue).toBe(24868322.82);
   });
 
   it('guarantees deterministic output and input immutability (PRD Tests 11 & 12)', () => {

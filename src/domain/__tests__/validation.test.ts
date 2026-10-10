@@ -3,14 +3,26 @@ import { validateAssumptionValue } from '../validation';
 
 describe('Domain Input Validation (T-019 / PRD Tests 13-15)', () => {
   it('validates bounds for monetary settings and assumptions (PRD Test 13)', () => {
-    // Valid bounds
+    // startingRevenueUsd (0 to 1,000,000,000)
     expect(validateAssumptionValue('startingRevenueUsd', 0)).toBeNull();
     expect(validateAssumptionValue('startingRevenueUsd', 1_000_000_000)).toBeNull();
     expect(validateAssumptionValue('startingRevenueUsd', 750000)).toBeNull();
-
-    // Out of range
     expect(validateAssumptionValue('startingRevenueUsd', -1)).not.toBeNull();
     expect(validateAssumptionValue('startingRevenueUsd', 1_000_000_001)).not.toBeNull();
+
+    // startingCashUsd (0 to 1,000,000,000)
+    expect(validateAssumptionValue('startingCashUsd', 0)).toBeNull();
+    expect(validateAssumptionValue('startingCashUsd', 1_000_000_000)).toBeNull();
+    expect(validateAssumptionValue('startingCashUsd', 3_000_000)).toBeNull();
+    expect(validateAssumptionValue('startingCashUsd', -1)).not.toBeNull();
+    expect(validateAssumptionValue('startingCashUsd', 1_000_000_001)).not.toBeNull();
+
+    // otherOperatingExpenseUsd (0 to 1,000,000,000)
+    expect(validateAssumptionValue('otherOperatingExpenseUsd', 0, 1)).toBeNull();
+    expect(validateAssumptionValue('otherOperatingExpenseUsd', 1_000_000_000, 1)).toBeNull();
+    expect(validateAssumptionValue('otherOperatingExpenseUsd', 240_000, 1)).toBeNull();
+    expect(validateAssumptionValue('otherOperatingExpenseUsd', -1, 1)).not.toBeNull();
+    expect(validateAssumptionValue('otherOperatingExpenseUsd', 1_000_000_001, 1)).not.toBeNull();
 
     // Loaded cost per FTE (1 to 100,000)
     expect(validateAssumptionValue('loadedMonthlyCostPerFteUsd', 1, 1)).toBeNull();

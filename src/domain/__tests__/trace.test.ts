@@ -95,4 +95,28 @@ describe('Dependency Tracing Engine (T-021 / PRD Tests 27-29)', () => {
     const cashM01 = traceIndex.nodes['calculated:endingCash:M01']!;
     expect(cashM01.inputIds).toEqual(['setting:startingCashUsd', 'calculated:ebitda:M01']);
   });
+
+  it('updates the corresponding and downstream trace node values when an assumption changes (PRD Test 29)', () => {
+    const updatedAssumptions = createSeedAssumptions();
+    // Initially M07 Eng FTE is 14, Other FTE is 20 -> Total FTE 34
+    expect(updatedAssumptions.months[6]!.engineeringFte).toBe(14);
+
+    // Modify M07 Eng FTE to 20
+    updatedAssumptions.months[6]!.engineeringFte = 20;
+
+    const recalculated = calculateModel(updatedAssumptions);
+    const updatedTrace = buildTraceIndex(updatedAssumptions, recalculated);
+
+    // 1. Assumption trace node value updated
+    const engNode = updatedTrace.nodes['assumption:engineeringFte:M07']!;
+    expect(engNode.value).toBe(20);
+
+    // 2. Direct downstream calculated node (Total FTE M07) updated: 20 + 20 = 40
+    const totalFteNode = updatedTrace.nodes['calculated:totalFte:M07']!;
+    expect(totalFteNode.value).toBe(40);
+
+    // 3. Indirect downstream calculated node (Payroll M07) updated: 40 * 12,000 = 480,000
+    const payrollNode = updatedTrace.nodes['calculated:payroll:M07']!;
+    expect(payrollNode.value).toBe(480000);
+  });
 });
