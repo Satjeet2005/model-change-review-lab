@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import axe from 'axe-core';
 import { AppProvider } from '@/state/AppProvider';
 import { ModelPage } from '@/pages/ModelPage';
 
@@ -12,8 +13,8 @@ describe('Model Grid Semantic Structure & Accessibility (T-041 / PRD Test 44)', 
       </AppProvider>
     );
 
-    // Table element
-    const table = screen.getByRole('grid');
+    // Table element (native table semantics per ADR-008 and PRD §29.6)
+    const table = screen.getByRole('table');
     expect(table).toBeInTheDocument();
 
     // 24 Month column headers
@@ -74,5 +75,16 @@ describe('Model Grid Semantic Structure & Accessibility (T-041 / PRD Test 44)', 
     // Selected trace cell notification banner is shown
     expect(screen.getByText('Selected Cell for Trace:')).toBeInTheDocument();
     expect(screen.getByText('calculated:ebitda:M07')).toBeInTheDocument();
+  });
+
+  it('passes automated axe accessibility scan without violations', async () => {
+    const { container } = render(
+      <AppProvider>
+        <ModelPage />
+      </AppProvider>
+    );
+
+    const results = await axe.run(container);
+    expect(results.violations).toEqual([]);
   });
 });

@@ -81,11 +81,7 @@ export function ModelGrid(): React.JSX.Element {
         aria-label="Planning Grid Table, 24 months, horizontally scrollable"
         className="overflow-x-auto max-h-[70vh] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       >
-        <table
-          className="w-full border-collapse text-left border-spacing-0"
-          role="grid"
-          aria-readonly="false"
-        >
+        <table className="w-full border-collapse text-left border-spacing-0">
           {/* Header */}
           <thead className="sticky top-0 z-20 bg-neutral-100 text-neutral-700 shadow-xs">
             {/* Row 1: Quarters */}

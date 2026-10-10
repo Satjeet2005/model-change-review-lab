@@ -60,7 +60,6 @@ export function CalculatedCell({
       className={`p-0 border-b border-r border-neutral-200 transition-colors ${
         isSelectedForTrace ? 'bg-blue-100 ring-1 ring-blue-400' : 'bg-white hover:bg-neutral-50'
       }`}
-      role="gridcell"
     >
       <button
         ref={buttonRef}
@@ -68,7 +67,7 @@ export function CalculatedCell({
         onClick={handleSelect}
         onFocus={onFocus}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') {
+          if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             handleSelect();
           } else if (e.key === 'ArrowUp') {

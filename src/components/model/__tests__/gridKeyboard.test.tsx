@@ -143,4 +143,136 @@ describe('Grid Keyboard & Editing Lifecycle (T-040 / PRD Tests 30-33)', () => {
     await user.keyboard('{Escape}');
     expect(screen.getByRole('button', { name: /^Engineering FTE M01: 12$/ })).toBeInTheDocument();
   });
+
+  it('navigates focus between adjacent cells using directional arrow keys', async () => {
+    const user = userEvent.setup();
+    render(
+      <AppProvider>
+        <ModelPage />
+      </AppProvider>
+    );
+
+    const m01EngBtn = screen.getByRole('button', { name: /^Engineering FTE M01: 12$/ });
+    act(() => {
+      m01EngBtn.focus();
+    });
+    expect(document.activeElement).toBe(m01EngBtn);
+
+    // Arrow Down -> Other FTE M01
+    await user.keyboard('{ArrowDown}');
+    const m01OtherBtn = screen.getByRole('button', { name: /^Other FTE M01: 18$/ });
+    expect(document.activeElement).toBe(m01OtherBtn);
+
+    // Arrow Right -> Other FTE M02
+    await user.keyboard('{ArrowRight}');
+    const m02OtherBtn = screen.getByRole('button', { name: /^Other FTE M02: 18$/ });
+    expect(document.activeElement).toBe(m02OtherBtn);
+  });
+
+  it('preserves edit mode and allows caret movement when arrow keys are pressed inside input', async () => {
+    const user = userEvent.setup();
+    render(
+      <AppProvider>
+        <ModelPage />
+      </AppProvider>
+    );
+
+    const m01EngBtn = screen.getByRole('button', { name: /^Engineering FTE M01: 12$/ });
+    act(() => {
+      m01EngBtn.focus();
+    });
+    await user.keyboard('{Enter}');
+
+    const input = screen.getByRole('textbox', { name: 'Engineering FTE M01' });
+    await user.clear(input);
+    await user.type(input, '15');
+
+    // Arrow keys inside input do NOT commit or move focus away
+    await user.keyboard('{ArrowLeft}{ArrowRight}');
+    expect(screen.getByRole('textbox', { name: 'Engineering FTE M01' })).toBeInTheDocument();
+    expect(input).toHaveValue('15');
+
+    // Cancel edit
+    await user.keyboard('{Escape}');
+  });
+
+  it('dispatches trace selection when Enter or Space is pressed on calculated cell', async () => {
+    const user = userEvent.setup();
+    render(
+      <AppProvider>
+        <ModelPage />
+      </AppProvider>
+    );
+
+    const ebitdaCell = screen.getByRole('button', { name: /^EBITDA \(\$\) M01: \$168,750$/ });
+    act(() => {
+      ebitdaCell.focus();
+    });
+
+    // Press Space
+    await user.keyboard(' ');
+    expect(screen.getByText('Selected Cell for Trace:')).toBeInTheDocument();
+    expect(screen.getByText('calculated:ebitda:M01')).toBeInTheDocument();
+
+    // Focus another calculated cell and press Enter
+    const revCell = screen.getByRole('button', { name: /^Revenue \(\$\) M01: \$768,750$/ });
+    act(() => {
+      revCell.focus();
+    });
+    await user.keyboard('{Enter}');
+    expect(screen.getByText('calculated:revenue:M01')).toBeInTheDocument();
+  });
+
+  it('handles grid boundary navigation predictably without escaping bounds', async () => {
+    const user = userEvent.setup();
+    render(
+      <AppProvider>
+        <ModelPage />
+      </AppProvider>
+    );
+
+    // Revenue Growth M01 is at (0, 0) - top-left boundary
+    const topLeftBtn = screen.getByRole('button', { name: /^Revenue Growth M01: 2\.5%$/ });
+    act(() => {
+      topLeftBtn.focus();
+    });
+
+    // ArrowUp at top boundary stays on top cell
+    await user.keyboard('{ArrowUp}');
+    expect(document.activeElement).toBe(topLeftBtn);
+
+    // ArrowLeft at left boundary stays on left cell
+    await user.keyboard('{ArrowLeft}');
+    expect(document.activeElement).toBe(topLeftBtn);
+  });
+
+  it('commits valid edit and advances to next editable cell on Tab', async () => {
+    const user = userEvent.setup();
+    render(
+      <AppProvider>
+        <ModelPage />
+      </AppProvider>
+    );
+
+    // Start editing Revenue Growth M01 (Row 0, Col 0)
+    const revGrowthBtn = screen.getByRole('button', { name: /^Revenue Growth M01: 2\.5%$/ });
+    act(() => {
+      revGrowthBtn.focus();
+    });
+    await user.keyboard('{Enter}');
+
+    const input = screen.getByRole('textbox', { name: 'Revenue Growth M01' });
+    await user.clear(input);
+    await user.type(input, '3.0%');
+
+    // Press Tab: commits and advances to Engineering FTE M01 (Row 1, Col 0)
+    await user.keyboard('{Tab}');
+
+    // Revenue Growth M01 updated
+    expect(screen.getByRole('button', { name: /^Revenue Growth M01: 3\.0%$/ })).toBeInTheDocument();
+
+    // Focus advanced to Engineering FTE M01
+    const nextBtn = screen.getByRole('button', { name: /^Engineering FTE M01: 12$/ });
+    expect(document.activeElement).toBe(nextBtn);
+  });
 });

@@ -100,10 +100,7 @@ export function EditableAssumptionCell({
 
   if (isEditing) {
     return (
-      <td
-        className="p-1 relative border-b border-r border-neutral-200 bg-blue-50/70"
-        role="gridcell"
-      >
+      <td className="p-1 relative border-b border-r border-neutral-200 bg-blue-50/70">
         <div className="flex flex-col">
           <input
             ref={inputRef}
@@ -156,10 +153,7 @@ export function EditableAssumptionCell({
   }
 
   return (
-    <td
-      className="p-0 border-b border-r border-neutral-200 bg-blue-50/30 hover:bg-blue-50 transition-colors"
-      role="gridcell"
-    >
+    <td className="p-0 border-b border-r border-neutral-200 bg-blue-50/30 hover:bg-blue-50 transition-colors">
       <button
         ref={buttonRef}
         type="button"
