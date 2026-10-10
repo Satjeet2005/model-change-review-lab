@@ -9,7 +9,7 @@ import { validateOperationSet } from '../validation';
 describe('Proposal Generation & Operation Sets (T-020 / PRD Tests 16-18 & 21-26)', () => {
   const provider = new MockProposalProvider();
 
-  it('rejects duplicate and unknown operation targets atomically (PRD Tests 16 & 17)', () => {
+  it('rejects duplicate and unknown operation targets atomically (PRD Test 16)', () => {
     const dupOps: ProposalOperation[] = [
       {
         targetKey: 'engineeringFte',
@@ -49,6 +49,30 @@ describe('Proposal Generation & Operation Sets (T-020 / PRD Tests 16-18 & 21-26)
 
     const unknownResult = validateOperationSet(unknownOps);
     expect(unknownResult.valid).toBe(false);
+  });
+
+  it('applies a valid operation set returning a changed clone and leaving original assumptions deeply equal (PRD Test 17 / T-014)', () => {
+    const seed = createSeedAssumptions();
+    const originalSnapshot = JSON.stringify(seed);
+    const originalFte = seed.months[6]!.engineeringFte; // M07
+
+    const ops: ProposalOperation[] = [
+      {
+        targetKey: 'engineeringFte',
+        targetPeriod: 7,
+        targetCellId: 'assumption:engineeringFte:M07',
+        previousValue: originalFte,
+        proposedValue: originalFte + 2,
+        displayUnit: 'fte',
+        changeLabel: '+2 Eng FTE'
+      }
+    ];
+
+    const draft = applyOperationsToDraft(seed, ops);
+
+    expect(draft.months[6]!.engineeringFte).toBe(originalFte + 2);
+    expect(seed.months[6]!.engineeringFte).toBe(originalFte); // Unmutated
+    expect(JSON.stringify(seed)).toBe(originalSnapshot); // Deeply equal
   });
 
   it('rejects multi-operation sets entirely if any operation is invalid (PRD Test 18)', () => {

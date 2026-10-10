@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { calculateModel } from '../calculation';
-import { applyOperationsToDraft } from '../operations';
 import { createSeedAssumptions } from '../seed';
 import { commitTransaction } from '../transactions';
 import { ProposalOperation } from '../types';
@@ -100,28 +99,6 @@ describe('Calculation Engine & Transactions (T-018 / PRD Tests 3-12)', () => {
     seed.months.pop(); // 23 months
 
     expect(() => calculateModel(seed)).toThrow(/must contain exactly 24 months/);
-  });
-
-  it('applies operations to a cloned draft without mutating the source (T-014)', () => {
-    const seed = createSeedAssumptions();
-    const originalFte = seed.months[6]!.engineeringFte; // M07
-
-    const ops: ProposalOperation[] = [
-      {
-        targetKey: 'engineeringFte',
-        targetPeriod: 7,
-        targetCellId: 'assumption:engineeringFte:M07',
-        previousValue: originalFte,
-        proposedValue: originalFte + 2,
-        displayUnit: 'fte',
-        changeLabel: '+2 Eng FTE'
-      }
-    ];
-
-    const draft = applyOperationsToDraft(seed, ops);
-
-    expect(draft.months[6]!.engineeringFte).toBe(originalFte + 2);
-    expect(seed.months[6]!.engineeringFte).toBe(originalFte); // Unmutated
   });
 
   it('orchestrates atomic transaction commits successfully (T-015)', () => {
