@@ -36,22 +36,24 @@ describe('AppShell Component (T-028)', () => {
     expect(modelTab).toHaveAttribute('aria-current', 'page');
     expect(modelTab).not.toBeDisabled();
 
-    // Future tabs disabled
+    // History tab is implemented in Phase 4 (T-061)
+    const historyTab = screen.getByRole('button', { name: /^History$/ });
+    expect(historyTab).not.toBeDisabled();
+
+    // Future tabs still disabled (Phase 5 & Phase 6)
     const compareTab = screen.getByRole('button', { name: /Scenario Compare/ });
     expect(compareTab).toBeDisabled();
-
-    const historyTab = screen.getByRole('button', { name: /History/ });
-    expect(historyTab).toBeDisabled();
 
     const perfTab = screen.getByRole('button', { name: /Performance Lab/ });
     expect(perfTab).toBeDisabled();
 
-    // Future action buttons disabled
+    // Undo is initially disabled when change history is empty
     const undoBtn = screen.getByRole('button', { name: /Undo/ });
     expect(undoBtn).toBeDisabled();
 
+    // Reset button is active with confirmation dialog (T-063)
     const resetBtn = screen.getByRole('button', { name: /Reset/ });
-    expect(resetBtn).toBeDisabled();
+    expect(resetBtn).not.toBeDisabled();
   });
 
   it('provides responsive header container and scroll-contained navigation on mobile', () => {

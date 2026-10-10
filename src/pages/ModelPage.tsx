@@ -4,6 +4,7 @@ import { calculateModel } from '@/domain/calculation';
 import { formatCurrency, formatDelta } from '@/domain/formatting';
 import { ProposalPromptSelector } from '@/components/proposals/ProposalPromptSelector';
 import { ProposalReviewPanel } from '@/components/proposals/ProposalReviewPanel';
+import { TracePanel } from '@/components/trace/TracePanel';
 import { ModelSettings } from '@/components/model/ModelSettings';
 import { ModelGrid } from '@/components/model/ModelGrid';
 
@@ -14,8 +15,7 @@ export interface ModelPageProps {
 }
 
 export function ModelPage({ proposalProvider }: ModelPageProps = {}): React.JSX.Element {
-  const { baselineAssumptions, calculatedWorkingModel, selectedTraceCellId, revision } =
-    useAppState();
+  const { baselineAssumptions, calculatedWorkingModel } = useAppState();
 
   // Baseline summary derived via pure calculation engine for honest comparison
   const baselineCalculated = useMemo(() => {
@@ -129,23 +129,8 @@ export function ModelPage({ proposalProvider }: ModelPageProps = {}): React.JSX.
       {/* 3. Proposal Review Panel (PRD §7.3 Item 4, conditional on active proposal) */}
       <ProposalReviewPanel />
 
-      {/* 4. Trace Selection Notification (P2 Contract) */}
-      {selectedTraceCellId && (
-        <div
-          role="status"
-          className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800"
-        >
-          <div className="flex items-center gap-2">
-            <span className="font-semibold">Selected Cell for Trace:</span>
-            <code className="bg-white px-1.5 py-0.5 rounded border border-blue-300 font-mono">
-              {selectedTraceCellId}
-            </code>
-          </div>
-          <span className="text-neutral-500 text-[11px]">
-            Revision {revision} · Full dependency trace graph visualizer launches in Phase 4
-          </span>
-        </div>
-      )}
+      {/* 4. Trace Panel (PRD §7.7) */}
+      <TracePanel />
 
       {/* 5. Model Baseline Settings */}
       <ModelSettings />

@@ -1,7 +1,8 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useState } from 'react';
 import { useAppState, useAppDispatch } from '@/state/AppProvider';
 import { NavTabId } from '@/state/appState';
 import { Button } from '@/components/ui/Button';
+import { ResetDialog } from '@/components/history/ResetDialog';
 
 export interface AppShellProps {
   children: ReactNode;
@@ -16,13 +17,34 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'model', label: 'Model', implemented: true },
   { id: 'compare', label: 'Scenario Compare', implemented: false },
-  { id: 'history', label: 'History', implemented: false },
+  { id: 'history', label: 'History', implemented: true },
   { id: 'performance', label: 'Performance Lab', implemented: false }
 ];
 
 export function AppShell({ children }: AppShellProps): React.JSX.Element {
-  const { activeTab } = useAppState();
+  const { activeTab, changeHistory } = useAppState();
   const dispatch = useAppDispatch();
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState<boolean>(false);
+
+  const canUndo = changeHistory.length > 0;
+
+  function handleUndo() {
+    if (!canUndo) return;
+    dispatch({ type: 'UNDO_LAST_TRANSACTION' });
+  }
+
+  function handleOpenReset() {
+    setIsResetDialogOpen(true);
+  }
+
+  function handleCancelReset() {
+    setIsResetDialogOpen(false);
+  }
+
+  function handleConfirmReset() {
+    dispatch({ type: 'RESET_TO_BASELINE' });
+    setIsResetDialogOpen(false);
+  }
 
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900 flex flex-col font-sans">
@@ -79,29 +101,36 @@ export function AppShell({ children }: AppShellProps): React.JSX.Element {
             })}
           </nav>
 
-          {/* Phase 4 Action Placeholders (Disabled) */}
+          {/* History / Scenario Actions */}
           <div className="flex items-center gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"
-              disabled
-              title="Undo last change (Phase 4)"
-              aria-disabled="true"
+              disabled={!canUndo}
+              onClick={handleUndo}
+              title={canUndo ? 'Undo latest transaction' : 'No transactions to undo'}
+              aria-disabled={!canUndo ? 'true' : undefined}
             >
               Undo
             </Button>
             <Button
               variant="outline"
               size="sm"
-              disabled
-              title="Reset scenario (Phase 4)"
-              aria-disabled="true"
+              onClick={handleOpenReset}
+              title="Reset scenario to baseline seed model"
             >
               Reset
             </Button>
           </div>
         </div>
       </header>
+
+      {/* Reset Confirmation Dialog */}
+      <ResetDialog
+        isOpen={isResetDialogOpen}
+        onConfirm={handleConfirmReset}
+        onCancel={handleCancelReset}
+      />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">

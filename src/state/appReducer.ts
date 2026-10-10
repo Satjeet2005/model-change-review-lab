@@ -2,6 +2,8 @@ import { AppState, NavTabId } from './appState';
 import { CellId, ChangeProposal, PeriodIndex, ProposalOperation } from '@/domain/types';
 import { buildTraceIndex } from '@/domain/trace';
 import { commitTransaction } from '@/domain/transactions';
+import { calculateModel } from '@/domain/calculation';
+import { cloneModelAssumptions } from '@/domain/operations';
 import { validateAssumptionValue, validateOperationSet } from '@/domain/validation';
 import { parseEditableValue } from '@/domain/formatting';
 
@@ -18,7 +20,9 @@ export type AppAction =
   | { type: 'PROPOSAL_EDIT_OPERATION'; targetCellId: CellId; proposedValue: number }
   | { type: 'PROPOSAL_ACCEPT' }
   | { type: 'PROPOSAL_REJECT' }
-  | { type: 'PROPOSAL_DISMISS' };
+  | { type: 'PROPOSAL_DISMISS' }
+  | { type: 'UNDO_LAST_TRANSACTION' }
+  | { type: 'RESET_TO_BASELINE' };
 
 interface ParsedTarget {
   targetKey: string;
@@ -302,6 +306,73 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         proposalStatus: 'idle',
         proposalError: null
       };
+
+    case 'UNDO_LAST_TRANSACTION': {
+      // 1. If history is empty, undo is a no-op
+      if (state.changeHistory.length === 0) {
+        return state;
+      }
+
+      // 2. Pop the latest transaction
+      const [latestTx, ...remainingHistory] = state.changeHistory;
+      if (!latestTx) {
+        return state;
+      }
+
+      // 3. Restore previous assumptions from snapshot (deep clone to prevent reference aliasing)
+      const restoredAssumptions = cloneModelAssumptions(latestTx.previousAssumptions);
+
+      // 4. Recalculate derived outputs through canonical calculation engine
+      const recalculatedModel = calculateModel(restoredAssumptions);
+
+      // 5. Rebuild trace index with synchronized outputs
+      const refreshedTraceIndex = buildTraceIndex(restoredAssumptions, recalculatedModel);
+
+      // 6. Monotonically increment revision token to ensure stale proposal safety (PRD §6.8, §8.5, T-064)
+      const nextRevision = state.revision + 1;
+
+      return {
+        ...state,
+        workingAssumptions: restoredAssumptions,
+        calculatedWorkingModel: recalculatedModel,
+        traceIndex: refreshedTraceIndex,
+        revision: nextRevision,
+        changeHistory: remainingHistory,
+        editingCell: null,
+        editingValue: '',
+        validationError: null
+      };
+    }
+
+    case 'RESET_TO_BASELINE': {
+      // 1. Restore working assumptions from immutable baseline (deep clone)
+      const restoredAssumptions = cloneModelAssumptions(state.baselineAssumptions);
+
+      // 2. Recompute through pure calculation engine
+      const recalculatedModel = calculateModel(restoredAssumptions);
+
+      // 3. Rebuild trace index for freshly reset scenario
+      const refreshedTraceIndex = buildTraceIndex(restoredAssumptions, recalculatedModel);
+
+      // 4. Monotonically increment revision token (PRD §6.8, §8.5, T-064)
+      const nextRevision = state.revision + 1;
+
+      return {
+        ...state,
+        workingAssumptions: restoredAssumptions,
+        calculatedWorkingModel: recalculatedModel,
+        traceIndex: refreshedTraceIndex,
+        revision: nextRevision,
+        changeHistory: [],
+        pendingProposal: null,
+        proposalStatus: 'idle',
+        proposalError: null,
+        editingCell: null,
+        editingValue: '',
+        validationError: null,
+        selectedTraceCellId: null
+      };
+    }
 
     default:
       return state;
