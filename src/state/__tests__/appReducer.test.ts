@@ -125,4 +125,193 @@ describe('Application Reducer & State Management (T-029)', () => {
     });
     expect(state1.selectedTraceCellId).toBe('calculated:ebitda:M07');
   });
+
+  it('generates proposal without mutating working assumptions or calculated outputs (FR-007, FR-008)', () => {
+    const state0 = createInitialState();
+    const workingSnapshot = JSON.stringify(state0.workingAssumptions);
+    const calculatedSnapshot = JSON.stringify(state0.calculatedWorkingModel);
+
+    const mockProposal = {
+      id: 'hire-engineers-from-q3',
+      title: 'Hire 2 Engineers',
+      description: 'Add 2 engineers',
+      operations: [
+        {
+          targetKey: 'engineeringFte',
+          targetPeriod: 7 as const,
+          targetCellId: 'assumption:engineeringFte:M07' as const,
+          previousValue: 14,
+          proposedValue: 16,
+          displayUnit: 'fte' as const,
+          changeLabel: '+2 Eng FTE'
+        }
+      ],
+      baseRevision: 1,
+      createdAt: new Date().toISOString()
+    };
+
+    const state1 = appReducer(state0, {
+      type: 'PROPOSAL_GENERATE_SUCCESS',
+      proposal: mockProposal
+    });
+
+    expect(state1.proposalStatus).toBe('review');
+    expect(state1.pendingProposal).toEqual(mockProposal);
+    expect(state1.revision).toBe(1);
+    expect(JSON.stringify(state1.workingAssumptions)).toBe(workingSnapshot);
+    expect(JSON.stringify(state1.calculatedWorkingModel)).toBe(calculatedSnapshot);
+  });
+
+  it('allows editing proposal operations without mutating canonical model (FR-009)', () => {
+    const state0 = createInitialState();
+    const mockProposal = {
+      id: 'hire-engineers-from-q3',
+      title: 'Hire 2 Engineers',
+      description: 'Add 2 engineers',
+      operations: [
+        {
+          targetKey: 'engineeringFte',
+          targetPeriod: 7 as const,
+          targetCellId: 'assumption:engineeringFte:M07' as const,
+          previousValue: 14,
+          proposedValue: 16,
+          displayUnit: 'fte' as const,
+          changeLabel: '+2 Eng FTE'
+        }
+      ],
+      baseRevision: 1,
+      createdAt: new Date().toISOString()
+    };
+
+    const state1 = appReducer(state0, {
+      type: 'PROPOSAL_GENERATE_SUCCESS',
+      proposal: mockProposal
+    });
+
+    // User edits proposed value from 16 to 18
+    const state2 = appReducer(state1, {
+      type: 'PROPOSAL_EDIT_OPERATION',
+      targetCellId: 'assumption:engineeringFte:M07',
+      proposedValue: 18
+    });
+
+    expect(state2.pendingProposal!.operations[0]!.proposedValue).toBe(18);
+    // Working model is still completely untouched at 14
+    expect(state2.workingAssumptions.months[6]!.engineeringFte).toBe(14);
+  });
+
+  it('accepts proposal and commits edited values atomically (FR-010, FR-015)', () => {
+    const state0 = createInitialState();
+    const mockProposal = {
+      id: 'hire-engineers-from-q3',
+      title: 'Hire 2 Engineers',
+      description: 'Add 2 engineers',
+      operations: [
+        {
+          targetKey: 'engineeringFte',
+          targetPeriod: 7 as const,
+          targetCellId: 'assumption:engineeringFte:M07' as const,
+          previousValue: 14,
+          proposedValue: 18,
+          displayUnit: 'fte' as const,
+          changeLabel: '+4 Eng FTE'
+        }
+      ],
+      baseRevision: 1,
+      createdAt: new Date().toISOString()
+    };
+
+    const state1 = appReducer(state0, {
+      type: 'PROPOSAL_GENERATE_SUCCESS',
+      proposal: mockProposal
+    });
+
+    const state2 = appReducer(state1, { type: 'PROPOSAL_ACCEPT' });
+
+    expect(state2.proposalStatus).toBe('accepted');
+    expect(state2.revision).toBe(2);
+    expect(state2.workingAssumptions.months[6]!.engineeringFte).toBe(18);
+    expect(state2.calculatedWorkingModel.months[6]!.totalFte).toBe(38);
+    expect(state2.changeHistory).toHaveLength(1);
+    expect(state2.changeHistory[0]!.kind).toBe('proposal-accepted');
+  });
+
+  it('blocks accepting a stale proposal generated against older revision (FR-012, PROP-002)', () => {
+    const state0 = createInitialState();
+    const mockProposal = {
+      id: 'hire-engineers-from-q3',
+      title: 'Hire 2 Engineers',
+      description: 'Add 2 engineers',
+      operations: [
+        {
+          targetKey: 'engineeringFte',
+          targetPeriod: 7 as const,
+          targetCellId: 'assumption:engineeringFte:M07' as const,
+          previousValue: 14,
+          proposedValue: 16,
+          displayUnit: 'fte' as const,
+          changeLabel: '+2 Eng FTE'
+        }
+      ],
+      baseRevision: 1, // generated against revision 1
+      createdAt: new Date().toISOString()
+    };
+
+    const state1 = appReducer(state0, {
+      type: 'PROPOSAL_GENERATE_SUCCESS',
+      proposal: mockProposal
+    });
+
+    // Model advances to revision 2 via a manual edit
+    const state2 = appReducer(state1, {
+      type: 'DIRECT_EDIT_COMMIT',
+      cellId: 'setting:startingRevenueUsd',
+      rawValue: 800000
+    });
+    expect(state2.revision).toBe(2);
+
+    // Attempting to accept proposal generated against revision 1
+    const state3 = appReducer(state2, { type: 'PROPOSAL_ACCEPT' });
+
+    expect(state3.proposalError).toMatch(/stale proposal/i);
+    expect(state3.revision).toBe(2);
+    // Working model starting revenue is still 800000, M07 eng FTE was not changed
+    expect(state3.workingAssumptions.months[6]!.engineeringFte).toBe(14);
+  });
+
+  it('rejects proposal without altering canonical model or incrementing revision (FR-011)', () => {
+    const state0 = createInitialState();
+    const workingSnapshot = JSON.stringify(state0.workingAssumptions);
+    const mockProposal = {
+      id: 'hire-engineers-from-q3',
+      title: 'Hire 2 Engineers',
+      description: 'Add 2 engineers',
+      operations: [
+        {
+          targetKey: 'engineeringFte',
+          targetPeriod: 7 as const,
+          targetCellId: 'assumption:engineeringFte:M07' as const,
+          previousValue: 14,
+          proposedValue: 16,
+          displayUnit: 'fte' as const,
+          changeLabel: '+2 Eng FTE'
+        }
+      ],
+      baseRevision: 1,
+      createdAt: new Date().toISOString()
+    };
+
+    const state1 = appReducer(state0, {
+      type: 'PROPOSAL_GENERATE_SUCCESS',
+      proposal: mockProposal
+    });
+
+    const state2 = appReducer(state1, { type: 'PROPOSAL_REJECT' });
+
+    expect(state2.proposalStatus).toBe('rejected');
+    expect(state2.pendingProposal).toBeNull();
+    expect(state2.revision).toBe(1);
+    expect(JSON.stringify(state2.workingAssumptions)).toBe(workingSnapshot);
+    expect(state2.changeHistory).toHaveLength(0);
+  });
 });

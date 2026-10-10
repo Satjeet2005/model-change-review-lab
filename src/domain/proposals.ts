@@ -8,9 +8,40 @@ import {
   ProposalOperation
 } from './types';
 
+export type ProposalTemplateId =
+  'hire-engineers-from-q3' | 'increase-growth-from-q3' | 'reduce-opex-from-m04';
+
+export interface ProposalPresetDefinition {
+  id: ProposalTemplateId;
+  label: string;
+  description: string;
+  intentSummary: string;
+}
+
+export const PROPOSAL_PRESETS: readonly ProposalPresetDefinition[] = [
+  {
+    id: 'hire-engineers-from-q3',
+    label: 'Hire 2 Engineers (Q3+)',
+    description: 'Add 2 engineering hires from M07 (Q3) onward',
+    intentSummary: '+2 Eng FTE across M07–M24 (18 months)'
+  },
+  {
+    id: 'increase-growth-from-q3',
+    label: 'Accelerate Growth (Q3+)',
+    description: 'Increase monthly revenue growth by 1 percentage point from M07 onward',
+    intentSummary: '+1.0% growth rate across M07–M24 (18 months)'
+  },
+  {
+    id: 'reduce-opex-from-m04',
+    label: 'Reduce OpEx (M04+)',
+    description: 'Reduce other operating expense by 8% from M04 onward',
+    intentSummary: '-8% Other OpEx across M04–M24 (21 months)'
+  }
+];
+
 export interface ProposalProvider {
   generateProposal(
-    templateId: 'hire-engineers-from-q3' | 'increase-growth-from-q3' | 'reduce-opex-from-m04',
+    templateId: ProposalTemplateId,
     currentAssumptions: ModelAssumptions,
     currentRevision: number
   ): Promise<ChangeProposal>;
@@ -26,7 +57,7 @@ function formatPeriodId(p: PeriodIndex): MonthIdString {
  */
 export class MockProposalProvider implements ProposalProvider {
   async generateProposal(
-    templateId: 'hire-engineers-from-q3' | 'increase-growth-from-q3' | 'reduce-opex-from-m04',
+    templateId: ProposalTemplateId,
     currentAssumptions: ModelAssumptions,
     currentRevision: number
   ): Promise<ChangeProposal> {

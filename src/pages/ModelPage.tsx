@@ -2,10 +2,18 @@ import React, { useMemo } from 'react';
 import { useAppState } from '@/state/AppProvider';
 import { calculateModel } from '@/domain/calculation';
 import { formatCurrency, formatDelta } from '@/domain/formatting';
+import { ProposalPromptSelector } from '@/components/proposals/ProposalPromptSelector';
+import { ProposalReviewPanel } from '@/components/proposals/ProposalReviewPanel';
 import { ModelSettings } from '@/components/model/ModelSettings';
 import { ModelGrid } from '@/components/model/ModelGrid';
 
-export function ModelPage(): React.JSX.Element {
+import { MockProposalProvider } from '@/domain/proposals';
+
+export interface ModelPageProps {
+  proposalProvider?: MockProposalProvider;
+}
+
+export function ModelPage({ proposalProvider }: ModelPageProps = {}): React.JSX.Element {
   const { baselineAssumptions, calculatedWorkingModel, selectedTraceCellId, revision } =
     useAppState();
 
@@ -115,7 +123,13 @@ export function ModelPage(): React.JSX.Element {
         </div>
       </section>
 
-      {/* 2. Trace Selection Notification (P2 Contract) */}
+      {/* 2. Propose a Change Panel (PRD §7.3 Item 3) */}
+      <ProposalPromptSelector provider={proposalProvider} />
+
+      {/* 3. Proposal Review Panel (PRD §7.3 Item 4, conditional on active proposal) */}
+      <ProposalReviewPanel />
+
+      {/* 4. Trace Selection Notification (P2 Contract) */}
       {selectedTraceCellId && (
         <div
           role="status"
@@ -133,10 +147,10 @@ export function ModelPage(): React.JSX.Element {
         </div>
       )}
 
-      {/* 3. Model Baseline Settings */}
+      {/* 5. Model Baseline Settings */}
       <ModelSettings />
 
-      {/* 4. Semantic Financial Model Grid */}
+      {/* 6. Semantic Financial Model Grid */}
       <ModelGrid />
     </div>
   );

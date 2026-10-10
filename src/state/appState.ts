@@ -12,6 +12,8 @@ import { buildTraceIndex } from '@/domain/trace';
 
 export type NavTabId = 'model' | 'compare' | 'history' | 'performance';
 
+export type ProposalUiStatus = 'idle' | 'generating' | 'review' | 'accepted' | 'rejected' | 'error';
+
 export interface AppState {
   readonly baselineAssumptions: ModelAssumptions;
   readonly workingAssumptions: ModelAssumptions;
@@ -25,6 +27,8 @@ export interface AppState {
   readonly selectedTraceCellId: CellId | null;
   readonly changeHistory: readonly TransactionRecord[];
   readonly pendingProposal: ChangeProposal | null;
+  readonly proposalStatus: ProposalUiStatus;
+  readonly proposalError: string | null;
 }
 
 /**
@@ -49,6 +53,8 @@ export function createInitialState(): AppState {
     validationError: null,
     selectedTraceCellId: null,
     changeHistory: [],
-    pendingProposal: null
+    pendingProposal: null,
+    proposalStatus: 'idle',
+    proposalError: null
   };
 }
