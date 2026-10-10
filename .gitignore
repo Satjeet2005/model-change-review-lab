@@ -33,3 +33,4 @@ coverage
 # Temporary agent planning & backup directories (preserved locally, ignored from repo)
 backup/
 scratch/
+*.tsbuildinfo
