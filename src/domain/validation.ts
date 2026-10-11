@@ -1,4 +1,12 @@
-import { PeriodIndex, ProposalOperation, ValidationError, ValidationResult } from './types';
+import {
+  DisplayUnit,
+  PeriodIndex,
+  ProposalOperation,
+  ReadonlyModelAssumptions,
+  SettingKey,
+  ValidationError,
+  ValidationResult
+} from './types';
 
 /**
  * Validates a single input or assumption value against PRD §6.9 rules.
@@ -151,7 +159,7 @@ export function validateAssumptionValue(
  * Validates an entire operation set atomically before application.
  * Rejects duplicate targets, unknown keys, and invalid values.
  */
-export function validateOperationSet(operations: ProposalOperation[]): ValidationResult {
+export function validateOperationSet(operations: readonly ProposalOperation[]): ValidationResult {
   const errors: ValidationError[] = [];
   const seenTargets = new Set<string>();
 
@@ -178,6 +186,194 @@ export function validateOperationSet(operations: ProposalOperation[]): Validatio
     if (valError) {
       errors.push(valError);
     }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+}
+
+/**
+ * Hardened validation for proposal acceptance.
+ * Enforces mandatory base assumptions, canonical cell ID syntax, unit matching,
+ * target uniqueness, non-empty set, base value numeric equality, and non-no-op criteria.
+ */
+export function validateProposalAcceptance(
+  operations: readonly ProposalOperation[],
+  baseAssumptions: ReadonlyModelAssumptions
+): ValidationResult {
+  const errors: ValidationError[] = [];
+
+  if (
+    !baseAssumptions ||
+    !Array.isArray(baseAssumptions.months) ||
+    baseAssumptions.months.length !== 24
+  ) {
+    return {
+      valid: false,
+      errors: [
+        {
+          targetKey: '',
+          targetPeriod: null,
+          message: 'Base assumptions are mandatory and must contain 24 months',
+          rejectedValue: baseAssumptions
+        }
+      ]
+    };
+  }
+
+  if (!operations || operations.length === 0) {
+    return {
+      valid: false,
+      errors: [
+        {
+          targetKey: '',
+          targetPeriod: null,
+          message: 'Operation set cannot be empty',
+          rejectedValue: operations
+        }
+      ]
+    };
+  }
+
+  const seenTargets = new Set<string>();
+  let hasEffectiveChanges = false;
+
+  for (const op of operations) {
+    const { targetKey, targetPeriod, targetCellId, previousValue, proposedValue, displayUnit } = op;
+
+    // Check for target uniqueness
+    const canonicalTargetId =
+      targetPeriod === null
+        ? `setting:${targetKey}`
+        : `assumption:${targetKey}:M${targetPeriod < 10 ? '0' + targetPeriod : targetPeriod}`;
+
+    if (seenTargets.has(canonicalTargetId)) {
+      errors.push({
+        targetKey,
+        targetPeriod,
+        message: `Duplicate operation target: ${canonicalTargetId}`,
+        rejectedValue: proposedValue
+      });
+    } else {
+      seenTargets.add(canonicalTargetId);
+    }
+
+    // Validate setting vs monthly assumption rules
+    const isSetting = targetKey === 'startingRevenueUsd' || targetKey === 'startingCashUsd';
+    const isMonthlyAssumption =
+      targetKey === 'revenueGrowthRate' ||
+      targetKey === 'engineeringFte' ||
+      targetKey === 'otherFte' ||
+      targetKey === 'loadedMonthlyCostPerFteUsd' ||
+      targetKey === 'otherOperatingExpenseUsd';
+
+    if (!isSetting && !isMonthlyAssumption) {
+      errors.push({
+        targetKey,
+        targetPeriod,
+        message: `Unknown or uneditable assumption field: ${targetKey}`,
+        rejectedValue: targetKey
+      });
+      continue;
+    }
+
+    // Target period check
+    if (isSetting) {
+      if (targetPeriod !== null) {
+        errors.push({
+          targetKey,
+          targetPeriod,
+          message: `Setting ${targetKey} must have null targetPeriod`,
+          rejectedValue: targetPeriod
+        });
+      }
+    } else {
+      if (
+        targetPeriod === null ||
+        !Number.isInteger(targetPeriod) ||
+        targetPeriod < 1 ||
+        targetPeriod > 24
+      ) {
+        errors.push({
+          targetKey,
+          targetPeriod,
+          message: `Monthly assumption ${targetKey} must have integer targetPeriod between 1 and 24`,
+          rejectedValue: targetPeriod
+        });
+      }
+    }
+
+    // Canonical cellId syntax check
+    if (targetCellId !== canonicalTargetId) {
+      errors.push({
+        targetKey,
+        targetPeriod,
+        message: `Mismatched targetCellId: expected "${canonicalTargetId}", got "${targetCellId}"`,
+        rejectedValue: targetCellId
+      });
+    }
+
+    // Expected display unit check
+    let expectedUnit: DisplayUnit;
+    if (targetKey === 'revenueGrowthRate') {
+      expectedUnit = 'percent';
+    } else if (targetKey === 'engineeringFte' || targetKey === 'otherFte') {
+      expectedUnit = 'fte';
+    } else {
+      expectedUnit = 'usd';
+    }
+
+    if (displayUnit !== expectedUnit) {
+      errors.push({
+        targetKey,
+        targetPeriod,
+        message: `Mismatched displayUnit for ${targetKey}: expected "${expectedUnit}", got "${displayUnit}"`,
+        rejectedValue: displayUnit
+      });
+    }
+
+    // Previous value check against baseAssumptions
+    let expectedBaseValue: number | undefined;
+    if (isSetting) {
+      expectedBaseValue = baseAssumptions[targetKey as SettingKey];
+    } else if (targetPeriod !== null && targetPeriod >= 1 && targetPeriod <= 24) {
+      const monthData = baseAssumptions.months[targetPeriod - 1];
+      if (monthData) {
+        expectedBaseValue = (monthData as unknown as Record<string, number>)[targetKey];
+      }
+    }
+
+    if (expectedBaseValue === undefined || previousValue !== expectedBaseValue) {
+      errors.push({
+        targetKey,
+        targetPeriod,
+        message: `previousValue (${previousValue}) does not match base assumption value (${expectedBaseValue})`,
+        rejectedValue: previousValue
+      });
+    }
+
+    // Validate proposed value bounds/syntax
+    const valError = validateAssumptionValue(targetKey, proposedValue, targetPeriod);
+    if (valError) {
+      errors.push(valError);
+    }
+
+    // Check for effective change
+    if (proposedValue !== previousValue) {
+      hasEffectiveChanges = true;
+    }
+  }
+
+  // Check that at least one proposed value differs from previousValue
+  if (!hasEffectiveChanges && errors.length === 0) {
+    errors.push({
+      targetKey: '',
+      targetPeriod: null,
+      message: 'No changes to apply: all proposed values equal base values',
+      rejectedValue: null
+    });
   }
 
   return {

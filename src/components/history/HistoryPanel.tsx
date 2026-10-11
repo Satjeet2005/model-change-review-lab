@@ -81,6 +81,14 @@ export function HistoryPanel({
                     <StatusBadge variant={isManual ? 'info' : 'success'}>
                       {isManual ? 'Manual Edit' : 'Accepted Proposal'}
                     </StatusBadge>
+                    {tx.provenance && (
+                      <span
+                        className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200"
+                        title={`Variant: ${tx.provenance.variantLabel} (Base Rev ${tx.provenance.baseRevision})`}
+                      >
+                        {tx.provenance.variantLabel}
+                      </span>
+                    )}
                     <span className="text-xs font-bold text-neutral-900">{tx.description}</span>
                   </div>
 

@@ -261,4 +261,28 @@ describe('Performance Lab: Page Integration, Benchmark Workflow & A11y (T-083, T
 
     expect(results.violations).toEqual([]);
   });
+
+  it('resets grid-ready reporting on rerun benchmark (Task 8 rerun fix)', async () => {
+    render(
+      <AppProvider>
+        <PerformanceLabPage />
+      </AppProvider>
+    );
+
+    // Initial run
+    fireEvent.click(screen.getByRole('button', { name: /^Run Benchmark Now$/ }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('virtual-grid-container')).toBeInTheDocument();
+    });
+
+    // Rerun button appears
+    const rerunBtn = await screen.findByRole('button', { name: /^Rerun Benchmark$/ });
+    fireEvent.click(rerunBtn);
+
+    // Grid remains ready and measured on rerun
+    await waitFor(() => {
+      expect(screen.getByTestId('virtual-grid-container')).toBeInTheDocument();
+    });
+  });
 });

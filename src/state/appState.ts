@@ -3,6 +3,7 @@ import {
   CellId,
   ChangeProposal,
   ModelAssumptions,
+  ProposalWorkspace,
   TraceIndex,
   TransactionRecord
 } from '@/domain/types';
@@ -26,6 +27,11 @@ export interface AppState {
   readonly validationError: string | null;
   readonly selectedTraceCellId: CellId | null;
   readonly changeHistory: readonly TransactionRecord[];
+
+  // V2 Proposal Workspace State
+  readonly proposalWorkspace: ProposalWorkspace | null;
+  readonly archivedStaleWorkspaces: readonly ProposalWorkspace[];
+  readonly activeGenerationRequestId: string | null;
   readonly pendingProposal: ChangeProposal | null;
   readonly proposalStatus: ProposalUiStatus;
   readonly proposalError: string | null;
@@ -53,6 +59,9 @@ export function createInitialState(): AppState {
     validationError: null,
     selectedTraceCellId: null,
     changeHistory: [],
+    proposalWorkspace: null,
+    archivedStaleWorkspaces: [],
+    activeGenerationRequestId: null,
     pendingProposal: null,
     proposalStatus: 'idle',
     proposalError: null

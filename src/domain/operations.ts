@@ -1,10 +1,12 @@
-import { ModelAssumptions, ProposalOperation } from './types';
+import { ModelAssumptions, ProposalOperation, ReadonlyModelAssumptions } from './types';
 import { validateOperationSet } from './validation';
 
 /**
  * Deep clones a ModelAssumptions object to prevent mutation.
  */
-export function cloneModelAssumptions(source: Readonly<ModelAssumptions>): ModelAssumptions {
+export function cloneModelAssumptions(
+  source: Readonly<ModelAssumptions> | ReadonlyModelAssumptions
+): ModelAssumptions {
   return {
     startingRevenueUsd: source.startingRevenueUsd,
     startingCashUsd: source.startingCashUsd,
@@ -13,13 +15,20 @@ export function cloneModelAssumptions(source: Readonly<ModelAssumptions>): Model
 }
 
 /**
+ * Deep clones an array of ProposalOperation objects to prevent reference sharing.
+ */
+export function cloneProposalOperations(ops: readonly ProposalOperation[]): ProposalOperation[] {
+  return ops.map((o) => ({ ...o }));
+}
+
+/**
  * Applies an operation set to a cloned draft of ModelAssumptions.
  * PRD §6.9: Validates operation set atomically and updates draft without mutating input.
  * Throws an Error if operation validation fails.
  */
 export function applyOperationsToDraft(
-  canonicalAssumptions: Readonly<ModelAssumptions>,
-  operations: ProposalOperation[]
+  canonicalAssumptions: Readonly<ModelAssumptions> | ReadonlyModelAssumptions,
+  operations: readonly ProposalOperation[]
 ): ModelAssumptions {
   // 1. Atomic validation
   const validation = validateOperationSet(operations);

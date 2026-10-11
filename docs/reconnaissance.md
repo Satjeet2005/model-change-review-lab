@@ -1,9 +1,12 @@
 # Phase 0 Repository Reconnaissance Report (T-000)
 
+> [!NOTE]
+> **Historical Artifact Notice:** This reconnaissance document represents the initial state of the workspace as recorded during Phase 0 before project scaffolding began. It is preserved for audit trail and provenance purposes only. For current application architecture and instructions, refer to [`README.md`](../README.md) and [`Model_Change_Review_Lab_V2_PRD.md`](./PRD/Model_Change_Review_Lab_V2_PRD.md).
+
 **Project:** Model Change Review Lab  
 **Date:** 2026-10-10  
 **Phase:** Phase 0 — Reconnaissance (T-000)  
-**Status:** Complete — Awaiting Human Approval Before Phase 1 (T-001)  
+**Status:** Superseded Historical Record (Preserved for Audit Trail)  
 **Deliverable:** `docs/reconnaissance.md`
 
 ---

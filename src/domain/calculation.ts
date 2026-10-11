@@ -4,7 +4,8 @@ import {
   CalculatedSummary,
   ModelAssumptions,
   MonthCalculated,
-  PeriodIndex
+  PeriodIndex,
+  ReadonlyModelAssumptions
 } from './types';
 
 /**
@@ -21,7 +22,9 @@ import {
  * 6. Ending Cash M01 = roundMoney(startingCash + EBITDA[1])
  *    Ending Cash Mt>1 = roundMoney(endingCash[t-1] + EBITDA[t])
  */
-export function calculateModel(assumptions: Readonly<ModelAssumptions>): CalculatedModel {
+export function calculateModel(
+  assumptions: Readonly<ModelAssumptions> | ReadonlyModelAssumptions
+): CalculatedModel {
   if (!assumptions || !Array.isArray(assumptions.months) || assumptions.months.length !== 24) {
     throw new Error(
       `Invalid assumptions: must contain exactly 24 months, received ${assumptions?.months?.length ?? 0}`

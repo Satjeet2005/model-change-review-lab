@@ -5,11 +5,11 @@ import {
   ModelAssumptions,
   MonthIdString,
   PeriodIndex,
-  ProposalOperation
+  ProposalOperation,
+  ProposalTemplateId
 } from './types';
 
-export type ProposalTemplateId =
-  'hire-engineers-from-q3' | 'increase-growth-from-q3' | 'reduce-opex-from-m04';
+export type { ProposalTemplateId };
 
 export interface ProposalPresetDefinition {
   id: ProposalTemplateId;

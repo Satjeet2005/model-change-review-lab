@@ -211,4 +211,121 @@ describe('Proposal Workflow Lifecycle (T-055 / PRD Tests 34-40)', () => {
     const summary = screen.getByRole('region', { name: 'Model Terminus KPI Summary' });
     expect(summary).toHaveTextContent('$11,740,322.82');
   });
+
+  describe('Proposal Workspace & Variant Management (Task 4)', () => {
+    it('manages variant lifecycle: duplication up to 3, switching tabs, independent editing, and reset', async () => {
+      const user = userEvent.setup();
+      render(
+        <AppProvider>
+          <ModelPage />
+        </AppProvider>
+      );
+
+      // Generate "Hire 2 Engineers" proposal
+      const generateButtons = screen.getAllByRole('button', { name: 'Generate Proposal' });
+      await user.click(generateButtons[0]!);
+
+      expect(await screen.findByRole('tab', { name: 'Original proposal' })).toBeInTheDocument();
+
+      // Duplicate button shows remaining slots
+      const dupBtn = screen.getByRole('button', { name: /\+ Duplicate \(2 remaining\)/ });
+      await user.click(dupBtn);
+
+      // Variant 2 tab appears and is selected
+      expect(screen.getByRole('tab', { name: 'Variant 2' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Variant 2' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+
+      // Duplicate again -> Variant 3
+      const dupBtn2 = screen.getByRole('button', { name: /\+ Duplicate \(1 remaining\)/ });
+      await user.click(dupBtn2);
+      expect(screen.getByRole('tab', { name: 'Variant 3' })).toBeInTheDocument();
+
+      // At 3 variants, duplicate button is disabled
+      const dupBtn3 = screen.getByRole('button', { name: /\+ Duplicate \(0 remaining\)/ });
+      expect(dupBtn3).toBeDisabled();
+      expect(dupBtn3).toHaveAttribute('title', 'Maximum of 3 variants reached');
+
+      // Edit Variant 3 operations
+      const reviewPanel = screen.getByRole('region', {
+        name: 'Change Proposal Review and Approval Panel'
+      });
+      const diffTable = within(reviewPanel).getByRole('table');
+      const editBtns = within(diffTable).getAllByRole('button', { name: 'Edit' });
+      await user.click(editBtns[0]!);
+
+      const editInput = within(diffTable).getByRole('textbox');
+      await user.clear(editInput);
+      await user.type(editInput, '20');
+      await user.click(within(diffTable).getByRole('button', { name: 'Done' }));
+
+      // Switch back to Original proposal tab
+      const origTab = screen.getByRole('tab', { name: 'Original proposal' });
+      await user.click(origTab);
+
+      // Original variant diff retains original proposed value (16) and does not have Variant 3's edit (20)
+      const diffTableAfter = within(reviewPanel).getByRole('table');
+      expect(within(diffTableAfter).queryByText('20')).not.toBeInTheDocument();
+      expect(within(diffTableAfter).getAllByText('16').length).toBeGreaterThan(0);
+
+      // Switch back to Variant 3 tab
+      const var3Tab = screen.getByRole('tab', { name: 'Variant 3' });
+      await user.click(var3Tab);
+      expect(within(diffTableAfter).getByText('20')).toBeInTheDocument();
+
+      // Reset edits restores Variant 3 back to creation snapshot (removes 20)
+      const resetBtn = screen.getByRole('button', { name: 'Reset Variant' });
+      await user.click(resetBtn);
+      expect(within(diffTableAfter).queryByText('20')).not.toBeInTheDocument();
+
+      // Remove Variant 3
+      const removeVar3Btn = screen.getByRole('button', { name: 'Remove Variant 3' });
+      await user.click(removeVar3Btn);
+
+      // Variant 3 removed, Variant 2 and Original remain
+      expect(screen.queryByRole('tab', { name: 'Variant 3' })).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Original proposal' })).toBeInTheDocument();
+    });
+
+    it('creates fresh version from current model when stale proposal is detected', async () => {
+      const user = userEvent.setup();
+      render(
+        <AppProvider>
+          <ModelPage />
+        </AppProvider>
+      );
+
+      // Generate proposal at revision 1
+      const generateButtons = screen.getAllByRole('button', { name: 'Generate Proposal' });
+      await user.click(generateButtons[0]!);
+
+      expect(await screen.findByText('Base Revision: 1')).toBeInTheDocument();
+
+      // Advance revision to 2 via setting edit
+      const settingsHeading = screen.getByText('Model Baseline Settings').closest('div');
+      const editRevenueBtn = within(settingsHeading!.parentElement!).getAllByRole('button', {
+        name: 'Edit'
+      })[0]!;
+      await user.click(editRevenueBtn);
+      const saveRevenueBtn = screen.getByRole('button', { name: 'Save' });
+      await user.click(saveRevenueBtn);
+
+      // Stale warning and refresh button appears
+      expect(await screen.findByText('Stale Revision Detected')).toBeInTheDocument();
+      const freshBtn = screen.getByRole('button', {
+        name: 'Create fresh version from current model'
+      });
+
+      // Click create fresh version
+      await user.click(freshBtn);
+
+      // Fresh proposal regenerated against revision 2
+      expect(await screen.findByText('Base Revision: 2')).toBeInTheDocument();
+      expect(screen.getByText('Current Revision: 2')).toBeInTheDocument();
+      expect(screen.queryByText('Stale Revision Detected')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Accept Proposal' })).toBeEnabled();
+    });
+  });
 });

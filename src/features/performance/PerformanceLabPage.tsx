@@ -27,6 +27,7 @@ export function PerformanceLabPage(): React.JSX.Element {
   const [measurements, setMeasurements] = useState<BenchmarkMeasurements>(INITIAL_BENCHMARK_STATE);
   const [dataset, setDataset] = useState<SyntheticDataset | null>(null);
   const [overrides, setOverrides] = useState<Record<string, number>>({});
+  const [manualEditLatency, setManualEditLatency] = useState<number | null>(null);
   const benchmarkStartMarkRef = useRef<number | null>(null);
 
   // Run Benchmark Workflow (T-084)
@@ -81,16 +82,7 @@ export function PerformanceLabPage(): React.JSX.Element {
   const handleCellOverrideChange = useCallback(
     (cellKey: string, newValue: number, latencyMs: number) => {
       setOverrides((prev) => ({ ...prev, [cellKey]: newValue }));
-
-      setMeasurements((prev) => {
-        const nextSamples = [...prev.editSamples, latencyMs];
-        const percentiles = calculatePercentiles(nextSamples);
-        return {
-          ...prev,
-          editSamples: nextSamples,
-          editPercentiles: percentiles
-        };
-      });
+      setManualEditLatency(latencyMs);
     },
     []
   );
@@ -133,6 +125,7 @@ export function PerformanceLabPage(): React.JSX.Element {
     benchmarkStartMarkRef.current = null;
     setDataset(null);
     setOverrides({});
+    setManualEditLatency(null);
     setMeasurements(INITIAL_BENCHMARK_STATE);
   }, []);
 
@@ -200,6 +193,12 @@ export function PerformanceLabPage(): React.JSX.Element {
           Benchmark Measurements
         </h2>
         <LabMetricsBanner measurements={measurements} />
+        {manualEditLatency !== null && (
+          <div className="text-[11px] text-neutral-500 italic text-right mt-1.5">
+            Last manual interaction duration: {manualEditLatency.toFixed(1)} ms (includes human
+            typing delay)
+          </div>
+        )}
       </section>
 
       {/* Virtual Grid Area or Empty State */}

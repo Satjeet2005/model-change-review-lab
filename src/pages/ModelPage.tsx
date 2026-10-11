@@ -127,7 +127,7 @@ export function ModelPage({ proposalProvider }: ModelPageProps = {}): React.JSX.
       <ProposalPromptSelector provider={proposalProvider} />
 
       {/* 3. Proposal Review Panel (PRD §7.3 Item 4, conditional on active proposal) */}
-      <ProposalReviewPanel />
+      <ProposalReviewPanel proposalProvider={proposalProvider} />
 
       {/* 4. Trace Panel (PRD §7.7) */}
       <TracePanel />

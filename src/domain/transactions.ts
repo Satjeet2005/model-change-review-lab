@@ -6,6 +6,7 @@ import {
   ModelAssumptions,
   ProposalOperation,
   TransactionKind,
+  TransactionProvenance,
   TransactionRecord
 } from './types';
 
@@ -22,10 +23,11 @@ export interface TransactionResult {
  */
 export function commitTransaction(
   currentAssumptions: Readonly<ModelAssumptions>,
-  operations: ProposalOperation[],
+  operations: readonly ProposalOperation[],
   kind: TransactionKind,
   description: string,
-  currentRevision: number
+  currentRevision: number,
+  provenance?: TransactionProvenance
 ): TransactionResult {
   if (operations.length === 0) {
     throw new Error('Cannot commit empty transaction');
@@ -52,7 +54,8 @@ export function commitTransaction(
     affectedCellIds,
     previousAssumptions: previousSnapshot,
     newAssumptions: cloneModelAssumptions(newAssumptions),
-    resultingRevision: currentRevision + 1
+    resultingRevision: currentRevision + 1,
+    ...(provenance ? { provenance } : {})
   };
 
   return {

@@ -11,7 +11,7 @@ import { validateAssumptionValue } from '@/domain/validation';
 import { Button } from '@/components/ui/Button';
 
 export interface ProposalDiffProps {
-  operations: ProposalOperation[];
+  operations: readonly ProposalOperation[];
   onEditOperation?: (
     targetCellId: ProposalOperation['targetCellId'],
     proposedValue: number

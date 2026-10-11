@@ -41,8 +41,12 @@ export function VirtualGrid({
   const [draftValue, setDraftValue] = useState<string>('');
   const editStartRef = useRef<number>(0);
   const hasReportedReadyRef = useRef<boolean>(false);
+  const lastStartMarkRef = useRef<number | null>(null);
 
-  // TanStack Virtualizer with fallback initialRect and observeElementRect for jsdom & headless environments
+  if (benchmarkStartMark !== lastStartMarkRef.current) {
+    lastStartMarkRef.current = benchmarkStartMark ?? null;
+    hasReportedReadyRef.current = false;
+  }
   const rowVirtualizer = useVirtualizer({
     count: dataset.rowCount,
     getScrollElement: () => scrollContainerRef.current,

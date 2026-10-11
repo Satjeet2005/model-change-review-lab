@@ -44,6 +44,14 @@ export interface ModelAssumptions {
   months: MonthAssumptions[]; // strictly 24 periods
 }
 
+export type ReadonlyMonthAssumptions = Readonly<MonthAssumptions>;
+
+export type ReadonlyModelAssumptions = Readonly<{
+  startingRevenueUsd: number;
+  startingCashUsd: number;
+  months: readonly ReadonlyMonthAssumptions[];
+}>;
+
 export interface MonthCalculated {
   period: PeriodIndex;
   revenue: number;
@@ -109,6 +117,32 @@ export interface ProposalOperation {
   changeLabel: string;
 }
 
+export type ProposalTemplateId =
+  'hire-engineers-from-q3' | 'increase-growth-from-q3' | 'reduce-opex-from-m04';
+
+export interface ProposalVariant {
+  readonly id: string;
+  readonly label: string;
+  readonly sourceTemplateId: ProposalTemplateId;
+  readonly duplicatedFromVariantId?: string;
+  readonly operations: readonly Readonly<ProposalOperation>[];
+  readonly resetSnapshotOperations: readonly Readonly<ProposalOperation>[];
+  readonly createdAt: string;
+}
+
+export interface ProposalWorkspace {
+  readonly id: string;
+  readonly baseRevision: number;
+  readonly baseAssumptions: ReadonlyModelAssumptions;
+  readonly sourceTemplateId: ProposalTemplateId;
+  readonly title: string;
+  readonly description: string;
+  readonly variants: readonly ProposalVariant[];
+  readonly selectedVariantId: string;
+  readonly comparisonVariantIds: readonly [string, string?];
+  readonly createdAt: string;
+}
+
 export interface ChangeProposal {
   id: string;
   title: string;
@@ -120,6 +154,14 @@ export interface ChangeProposal {
 
 export type TransactionKind = 'manual-edit' | 'proposal-accepted';
 
+export interface TransactionProvenance {
+  readonly proposalWorkspaceId: string;
+  readonly variantId: string;
+  readonly variantLabel: string;
+  readonly sourceTemplateId: ProposalTemplateId;
+  readonly baseRevision: number;
+}
+
 export interface TransactionRecord {
   id: string;
   timestamp: string;
@@ -129,6 +171,7 @@ export interface TransactionRecord {
   previousAssumptions: ModelAssumptions;
   newAssumptions: ModelAssumptions;
   resultingRevision: number;
+  provenance?: TransactionProvenance;
 }
 
 export interface ValidationError {

@@ -48,9 +48,9 @@ flowchart TD
     subgraph StateTree["Canonical State (src/state/appState.ts)"]
         BaselineModel["Immutable Baseline Model"]
         WorkingModel["Active Working Model (Revision Token)"]
-        ChangeHistory["Committed Transaction History"]
-        UndoSnapshot["Single-Level Undo Snapshot"]
-        ProposalState["Isolated Proposal Draft State"]
+        ChangeHistory["Committed Transaction History Stack"]
+        UndoSnapshot["Transaction History Stack (Single-Step Undo)"]
+        ProposalState["Isolated Proposal Workspace State"]
     end
 
     Transactions --> StateTree
@@ -109,15 +109,15 @@ All monetary values are rounded to two decimal places using `roundMoney(v) = Mat
 
 All manual cell edits and proposed operations are validated prior to commit:
 
-| Field                   | Type       | Min Bound      | Max Bound         | Rejection Handling                   |
-| ----------------------- | ---------- | -------------- | ----------------- | ------------------------------------ |
-| **Starting Revenue**    | Currency   | $0.00          | $100,000,000.00   | Rejected with inline error           |
-| **Starting Cash**       | Currency   | $0.00          | $1,000,000,000.00 | Rejected with inline error           |
-| **Revenue Growth Rate** | Percentage | -100.0% (-1.0) | +500.0% (+5.0)    | Rejected with inline error           |
-| **Engineering FTE**     | Integer    | 0              | 10,000            | Non-integers / out of range rejected |
-| **Other FTE**           | Integer    | 0              | 10,000            | Non-integers / out of range rejected |
-| **Cost per FTE**        | Currency   | $0.00          | $1,000,000.00     | Negative / excessive values rejected |
-| **Other OpEx**          | Currency   | $0.00          | $50,000,000.00    | Negative values rejected             |
+| Field                   | Type       | Min Bound       | Max Bound           | Rejection Handling                   |
+| ----------------------- | ---------- | --------------- | ------------------- | ------------------------------------ |
+| **Starting Revenue**    | Currency   | $0.00           | $1,000,000,000.00   | Rejected with inline error           |
+| **Starting Cash**       | Currency   | $0.00           | $1,000,000,000.00   | Rejected with inline error           |
+| **Revenue Growth Rate** | Percentage | -50.0% (-0.50)  | +50.0% (+0.50)      | Rejected with inline error           |
+| **Engineering FTE**     | Integer    | 0               | 1,000               | Non-integers / out of range rejected |
+| **Other FTE**           | Integer    | 0               | 1,000               | Non-integers / out of range rejected |
+| **Cost per FTE**        | Currency   | $1.00           | $100,000.00         | Negative / excessive values rejected |
+| **Other OpEx**          | Currency   | $0.00           | $1,000,000,000.00   | Negative / excessive values rejected |
 
 ---
 
@@ -125,7 +125,7 @@ All manual cell edits and proposed operations are validated prior to commit:
 
 ### Prerequisites
 
-- **Node.js:** v20.x or v22.x LTS (tested on Node v24)
+- **Node.js:** v22.x LTS (primary CI and local development; Netlify runs Node 20.x LTS)
 - **Package Manager:** `npm` (with committed `package-lock.json`)
 
 ### Command Reference

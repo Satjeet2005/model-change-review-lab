@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { createInitialState } from '../appState';
 import { appReducer } from '../appReducer';
+import { ProposalVariant, ProposalWorkspace } from '@/domain/types';
+import { cloneModelAssumptions } from '@/domain/operations';
 
 describe('Application Reducer & State Management (T-029)', () => {
   it('initializes state with independent baseline and working models', () => {
@@ -313,5 +315,315 @@ describe('Application Reducer & State Management (T-029)', () => {
     expect(state2.revision).toBe(1);
     expect(JSON.stringify(state2.workingAssumptions)).toBe(workingSnapshot);
     expect(state2.changeHistory).toHaveLength(0);
+  });
+
+  describe('Proposal Workspace, Immutability & Race Safety (V2 / Task 3)', () => {
+    const createMockWorkspace = (revision = 1): ProposalWorkspace => {
+      const state = createInitialState();
+      const variant: ProposalVariant = {
+        id: 'var-1',
+        label: 'Original proposal',
+        sourceTemplateId: 'hire-engineers-from-q3',
+        operations: [
+          {
+            targetKey: 'engineeringFte',
+            targetPeriod: 7,
+            targetCellId: 'assumption:engineeringFte:M07',
+            previousValue: 14,
+            proposedValue: 16,
+            displayUnit: 'fte',
+            changeLabel: '+2 Eng FTE'
+          }
+        ],
+        resetSnapshotOperations: [
+          {
+            targetKey: 'engineeringFte',
+            targetPeriod: 7,
+            targetCellId: 'assumption:engineeringFte:M07',
+            previousValue: 14,
+            proposedValue: 16,
+            displayUnit: 'fte',
+            changeLabel: '+2 Eng FTE'
+          }
+        ],
+        createdAt: new Date().toISOString()
+      };
+
+      return {
+        id: 'ws-1',
+        baseRevision: revision,
+        baseAssumptions: cloneModelAssumptions(state.workingAssumptions),
+        sourceTemplateId: 'hire-engineers-from-q3',
+        title: 'Hire 2 Engineers from Q3',
+        description: 'Add 2 engineers starting M07',
+        variants: [variant],
+        selectedVariantId: 'var-1',
+        comparisonVariantIds: ['var-1'],
+        createdAt: new Date().toISOString()
+      };
+    };
+
+    it('drops obsolete async generation success when requestId does not match active request', () => {
+      const state0 = createInitialState();
+      const state1 = appReducer(state0, {
+        type: 'PROPOSAL_GENERATE_START',
+        requestId: 'req-current'
+      });
+      expect(state1.activeGenerationRequestId).toBe('req-current');
+
+      // Obsolete response arrives with older requestId
+      const obsoleteWorkspace = createMockWorkspace();
+      const state2 = appReducer(state1, {
+        type: 'PROPOSAL_GENERATE_SUCCESS',
+        requestId: 'req-old',
+        workspace: obsoleteWorkspace
+      });
+
+      // Obsolete response is dropped
+      expect(state2.proposalWorkspace).toBeNull();
+      expect(state2.proposalStatus).toBe('generating');
+      expect(state2.activeGenerationRequestId).toBe('req-current');
+
+      // Matching response succeeds
+      const currentWorkspace = createMockWorkspace();
+      const state3 = appReducer(state2, {
+        type: 'PROPOSAL_GENERATE_SUCCESS',
+        requestId: 'req-current',
+        workspace: currentWorkspace
+      });
+      expect(state3.proposalWorkspace).toEqual(currentWorkspace);
+      expect(state3.proposalStatus).toBe('review');
+      expect(state3.activeGenerationRequestId).toBeNull();
+    });
+
+    it('drops obsolete async generation error when requestId does not match active request', () => {
+      const state0 = createInitialState();
+      const state1 = appReducer(state0, {
+        type: 'PROPOSAL_GENERATE_START',
+        requestId: 'req-current'
+      });
+
+      // Obsolete error arrives
+      const state2 = appReducer(state1, {
+        type: 'PROPOSAL_GENERATE_ERROR',
+        requestId: 'req-old',
+        error: 'Network timeout'
+      });
+
+      expect(state2.proposalStatus).toBe('generating');
+      expect(state2.proposalError).toBeNull();
+
+      // Correlated error applies
+      const state3 = appReducer(state2, {
+        type: 'PROPOSAL_GENERATE_ERROR',
+        requestId: 'req-current',
+        error: 'Failed to generate'
+      });
+      expect(state3.proposalStatus).toBe('error');
+      expect(state3.proposalError).toBe('Failed to generate');
+      expect(state3.activeGenerationRequestId).toBeNull();
+    });
+
+    it('duplicates variant with independent operations and reset snapshots, capping at 3 variants', () => {
+      const state0 = createInitialState();
+      const ws = createMockWorkspace();
+      const state1 = appReducer(state0, {
+        type: 'PROPOSAL_GENERATE_SUCCESS',
+        workspace: ws
+      });
+
+      // Duplicate variant 1 -> Variant 2
+      const state2 = appReducer(state1, {
+        type: 'WORKSPACE_DUPLICATE_VARIANT',
+        sourceVariantId: 'var-1'
+      });
+      expect(state2.proposalWorkspace!.variants).toHaveLength(2);
+      const var2 = state2.proposalWorkspace!.variants[1]!;
+      expect(var2.label).toBe('Variant 2');
+      expect(var2.duplicatedFromVariantId).toBe('var-1');
+      expect(state2.proposalWorkspace!.selectedVariantId).toBe(var2.id);
+
+      // Duplicate variant 2 -> Variant 3
+      const state3 = appReducer(state2, {
+        type: 'WORKSPACE_DUPLICATE_VARIANT',
+        sourceVariantId: var2.id
+      });
+      expect(state3.proposalWorkspace!.variants).toHaveLength(3);
+
+      // Attempting 4th variant is blocked by max 3 limit
+      const state4 = appReducer(state3, {
+        type: 'WORKSPACE_DUPLICATE_VARIANT',
+        sourceVariantId: var2.id
+      });
+      expect(state4.proposalWorkspace!.variants).toHaveLength(3);
+    });
+
+    it('ensures copy-on-write isolation: editing a variant does not mutate siblings or reset snapshots', () => {
+      const state0 = createInitialState();
+      const ws = createMockWorkspace();
+      const state1 = appReducer(state0, {
+        type: 'PROPOSAL_GENERATE_SUCCESS',
+        workspace: ws
+      });
+
+      const state2 = appReducer(state1, {
+        type: 'WORKSPACE_DUPLICATE_VARIANT',
+        sourceVariantId: 'var-1'
+      });
+      const var2Id = state2.proposalWorkspace!.variants[1]!.id;
+
+      // Edit Variant 2 operations
+      const state3 = appReducer(state2, {
+        type: 'WORKSPACE_EDIT_OPERATION',
+        variantId: var2Id,
+        targetCellId: 'assumption:engineeringFte:M07',
+        proposedValue: 20
+      });
+
+      const originalVar = state3.proposalWorkspace!.variants.find((v) => v.id === 'var-1')!;
+      const editedVar = state3.proposalWorkspace!.variants.find((v) => v.id === var2Id)!;
+
+      // Original variant operations remain untouched at 16
+      expect(originalVar.operations[0]!.proposedValue).toBe(16);
+      // Edited variant operations updated to 20
+      expect(editedVar.operations[0]!.proposedValue).toBe(20);
+      // Reset snapshot of edited variant remains at creation snapshot (16)
+      expect(editedVar.resetSnapshotOperations[0]!.proposedValue).toBe(16);
+
+      // Reset edits restores Variant 2 back to 16
+      const state4 = appReducer(state3, {
+        type: 'WORKSPACE_RESET_VARIANT_EDITS',
+        variantId: var2Id
+      });
+      const resetVar = state4.proposalWorkspace!.variants.find((v) => v.id === var2Id)!;
+      expect(resetVar.operations[0]!.proposedValue).toBe(16);
+    });
+
+    it('prevents removing original variant, but allows removing duplicates with safe selection fallback', () => {
+      const state0 = createInitialState();
+      const ws = createMockWorkspace();
+      const state1 = appReducer(state0, {
+        type: 'PROPOSAL_GENERATE_SUCCESS',
+        workspace: ws
+      });
+
+      // Attempting to remove original variant is rejected
+      const state2 = appReducer(state1, {
+        type: 'WORKSPACE_REMOVE_VARIANT',
+        variantId: 'var-1'
+      });
+      expect(state2.proposalWorkspace!.variants).toHaveLength(1);
+
+      // Add duplicate and remove it
+      const state3 = appReducer(state1, {
+        type: 'WORKSPACE_DUPLICATE_VARIANT',
+        sourceVariantId: 'var-1'
+      });
+      const dupId = state3.proposalWorkspace!.variants[1]!.id;
+      expect(state3.proposalWorkspace!.selectedVariantId).toBe(dupId);
+
+      const state4 = appReducer(state3, {
+        type: 'WORKSPACE_REMOVE_VARIANT',
+        variantId: dupId
+      });
+      expect(state4.proposalWorkspace!.variants).toHaveLength(1);
+      expect(state4.proposalWorkspace!.selectedVariantId).toBe('var-1');
+    });
+
+    it('rejects acceptance of no-op proposals with zero revision increment and zero transactions', () => {
+      const state0 = createInitialState();
+      const ws = createMockWorkspace();
+      // Set proposedValue equal to previousValue (no effective changes)
+      const noOpWs: ProposalWorkspace = {
+        ...ws,
+        variants: [
+          {
+            ...ws.variants[0]!,
+            operations: [
+              {
+                ...ws.variants[0]!.operations[0]!,
+                proposedValue: 14 // equals previousValue 14
+              }
+            ]
+          }
+        ]
+      };
+
+      const state1 = appReducer(state0, {
+        type: 'PROPOSAL_GENERATE_SUCCESS',
+        workspace: noOpWs
+      });
+
+      const state2 = appReducer(state1, { type: 'PROPOSAL_ACCEPT' });
+
+      expect(state2.proposalError).toMatch(/No changes to apply/);
+      expect(state2.revision).toBe(1);
+      expect(state2.changeHistory).toHaveLength(0);
+      expect(state2.workingAssumptions.months[6]!.engineeringFte).toBe(14);
+    });
+
+    it('accepts proposal variant with provenance metadata attached to transaction', () => {
+      const state0 = createInitialState();
+      const ws = createMockWorkspace();
+      const state1 = appReducer(state0, {
+        type: 'PROPOSAL_GENERATE_SUCCESS',
+        workspace: ws
+      });
+
+      const state2 = appReducer(state1, { type: 'PROPOSAL_ACCEPT' });
+
+      expect(state2.proposalStatus).toBe('accepted');
+      expect(state2.revision).toBe(2);
+      expect(state2.changeHistory).toHaveLength(1);
+
+      const tx = state2.changeHistory[0]!;
+      expect(tx.provenance).toBeDefined();
+      expect(tx.provenance?.proposalWorkspaceId).toBe('ws-1');
+      expect(tx.provenance?.variantId).toBe('var-1');
+      expect(tx.provenance?.variantLabel).toBe('Original proposal');
+      expect(tx.provenance?.sourceTemplateId).toBe('hire-engineers-from-q3');
+      expect(tx.provenance?.baseRevision).toBe(1);
+    });
+
+    it('manages bounded stale archive FIFO up to 3 workspaces', () => {
+      const state0 = createInitialState();
+      const ws1 = { ...createMockWorkspace(), id: 'ws-1' };
+      const ws2 = { ...createMockWorkspace(), id: 'ws-2' };
+      const ws3 = { ...createMockWorkspace(), id: 'ws-3' };
+      const ws4 = { ...createMockWorkspace(), id: 'ws-4' };
+
+      const s1 = appReducer(state0, { type: 'PROPOSAL_GENERATE_SUCCESS', workspace: ws1 });
+      const s2 = appReducer(s1, { type: 'WORKSPACE_ARCHIVE_STALE' });
+      expect(s2.archivedStaleWorkspaces).toHaveLength(1);
+      expect(s2.archivedStaleWorkspaces[0]!.id).toBe('ws-1');
+
+      const s3 = appReducer(s2, { type: 'PROPOSAL_GENERATE_SUCCESS', workspace: ws2 });
+      const s4 = appReducer(s3, { type: 'WORKSPACE_ARCHIVE_STALE' });
+      expect(s4.archivedStaleWorkspaces).toHaveLength(2);
+
+      const s5 = appReducer(s4, { type: 'PROPOSAL_GENERATE_SUCCESS', workspace: ws3 });
+      const s6 = appReducer(s5, { type: 'WORKSPACE_ARCHIVE_STALE' });
+      expect(s6.archivedStaleWorkspaces).toHaveLength(3);
+
+      // 4th archive drops the oldest (ws-1)
+      const s7 = appReducer(s6, { type: 'PROPOSAL_GENERATE_SUCCESS', workspace: ws4 });
+      const s8 = appReducer(s7, { type: 'WORKSPACE_ARCHIVE_STALE' });
+      expect(s8.archivedStaleWorkspaces).toHaveLength(3);
+      expect(s8.archivedStaleWorkspaces.map((w) => w.id)).toEqual(['ws-4', 'ws-3', 'ws-2']);
+    });
+
+    it('resets to baseline clears proposalWorkspace and archivedStaleWorkspaces while advancing revision', () => {
+      const state0 = createInitialState();
+      const ws = createMockWorkspace();
+      const s1 = appReducer(state0, { type: 'PROPOSAL_GENERATE_SUCCESS', workspace: ws });
+      const s2 = appReducer(s1, { type: 'WORKSPACE_ARCHIVE_STALE' });
+      const s3 = appReducer(s2, { type: 'PROPOSAL_GENERATE_SUCCESS', workspace: ws });
+
+      const s4 = appReducer(s3, { type: 'RESET_TO_BASELINE' });
+      expect(s4.proposalWorkspace).toBeNull();
+      expect(s4.archivedStaleWorkspaces).toHaveLength(0);
+      expect(s4.revision).toBe(2);
+      expect(s4.changeHistory).toHaveLength(0);
+    });
   });
 });

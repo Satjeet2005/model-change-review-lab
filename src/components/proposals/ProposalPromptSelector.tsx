@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useAppState, useAppDispatch } from '@/state/AppProvider';
 import { MockProposalProvider, PROPOSAL_PRESETS, ProposalTemplateId } from '@/domain/proposals';
+import { ProposalVariant, ProposalWorkspace } from '@/domain/types';
+import { cloneModelAssumptions, cloneProposalOperations } from '@/domain/operations';
 import { Button } from '@/components/ui/Button';
 
 export interface ProposalPromptSelectorProps {
@@ -19,16 +21,59 @@ export function ProposalPromptSelector({
   async function handleSelectPreset(templateId: ProposalTemplateId) {
     if (isGenerating) return;
 
+    const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const requestRevision = revision;
+    const requestAssumptions = cloneModelAssumptions(workingAssumptions);
+
     setGeneratingId(templateId);
-    dispatch({ type: 'PROPOSAL_GENERATE_START' });
+    dispatch({
+      type: 'PROPOSAL_GENERATE_START',
+      requestId,
+      requestRevision,
+      requestAssumptions
+    });
 
     try {
       // Deterministic simulation
-      const proposal = await provider.generateProposal(templateId, workingAssumptions, revision);
-      dispatch({ type: 'PROPOSAL_GENERATE_SUCCESS', proposal });
+      const proposal = await provider.generateProposal(
+        templateId,
+        requestAssumptions,
+        requestRevision
+      );
+
+      const variantId = `var-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const ops = cloneProposalOperations(proposal.operations);
+      const variant: ProposalVariant = {
+        id: variantId,
+        label: 'Original proposal',
+        sourceTemplateId: templateId,
+        operations: ops,
+        resetSnapshotOperations: cloneProposalOperations(ops),
+        createdAt: new Date().toISOString()
+      };
+
+      const workspace: ProposalWorkspace = {
+        id: `ws-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        baseRevision: requestRevision,
+        baseAssumptions: requestAssumptions,
+        sourceTemplateId: templateId,
+        title: proposal.title,
+        description: proposal.description,
+        variants: [variant],
+        selectedVariantId: variant.id,
+        comparisonVariantIds: [variant.id],
+        createdAt: new Date().toISOString()
+      };
+
+      dispatch({
+        type: 'PROPOSAL_GENERATE_SUCCESS',
+        requestId,
+        workspace
+      });
     } catch (err) {
       dispatch({
         type: 'PROPOSAL_GENERATE_ERROR',
+        requestId,
         error: err instanceof Error ? err.message : 'Proposal generation failed'
       });
     } finally {

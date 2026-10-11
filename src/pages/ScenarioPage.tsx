@@ -41,6 +41,11 @@ export function ScenarioPage(): React.JSX.Element {
       {/* 2. Cumulative Summary Cards (T-073) */}
       <ScenarioSummaryCards summary={comparison.summary} />
 
+      <p className="text-[11px] text-neutral-500 italic">
+        Ending cash is a simplified roll-forward using EBITDA; excludes working capital, CapEx,
+        taxes, and financing.
+      </p>
+
       {/* 3. Metric Selector (T-070) */}
       <MetricSelector selectedMetric={selectedMetric} onSelectMetric={setSelectedMetric} />
 

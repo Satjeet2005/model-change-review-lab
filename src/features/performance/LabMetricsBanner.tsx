@@ -118,12 +118,12 @@ export function LabMetricsBanner({ measurements }: LabMetricsBannerProps): React
         </div>
       </div>
 
-      {/* 5. Edit Keystroke Latency */}
+      {/* 5. Override Mutation Latency */}
       <div className="bg-white border border-neutral-200 rounded-lg p-4 shadow-xs flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">
-            <span>Edit Latency (p95)</span>
-            <span className="text-neutral-400 font-normal lowercase">30+ samples</span>
+            <span>Override Latency (p95)</span>
+            <span className="text-neutral-400 font-normal lowercase">in-memory</span>
           </div>
           <div className="text-xl font-bold font-mono text-neutral-900 tracking-tight my-1">
             {isError ? (
