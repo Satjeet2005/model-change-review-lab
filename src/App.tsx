@@ -5,6 +5,7 @@ import { ModelPage } from '@/pages/ModelPage';
 
 import { useAppState, useAppDispatch } from '@/state/AppProvider';
 import { HistoryPanel } from '@/components/history/HistoryPanel';
+import { ScenarioPage } from '@/pages/ScenarioPage';
 
 function AppContent(): React.JSX.Element {
   const { activeTab, changeHistory } = useAppState();
@@ -18,6 +19,10 @@ function AppContent(): React.JSX.Element {
         onUndoLast={() => dispatch({ type: 'UNDO_LAST_TRANSACTION' })}
       />
     );
+  }
+
+  if (activeTab === 'compare') {
+    return <ScenarioPage />;
   }
 
   return <ModelPage />;

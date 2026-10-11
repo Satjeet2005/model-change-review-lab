@@ -36,14 +36,14 @@ describe('AppShell Component (T-028)', () => {
     expect(modelTab).toHaveAttribute('aria-current', 'page');
     expect(modelTab).not.toBeDisabled();
 
-    // History tab is implemented in Phase 4 (T-061)
+    // History and Scenario Compare tabs are implemented in Phase 4 and Phase 5
     const historyTab = screen.getByRole('button', { name: /^History$/ });
     expect(historyTab).not.toBeDisabled();
 
-    // Future tabs still disabled (Phase 5 & Phase 6)
-    const compareTab = screen.getByRole('button', { name: /Scenario Compare/ });
-    expect(compareTab).toBeDisabled();
+    const compareTab = screen.getByRole('button', { name: /^Scenario Compare$/ });
+    expect(compareTab).not.toBeDisabled();
 
+    // Future tab still disabled (Phase 6)
     const perfTab = screen.getByRole('button', { name: /Performance Lab/ });
     expect(perfTab).toBeDisabled();
 
