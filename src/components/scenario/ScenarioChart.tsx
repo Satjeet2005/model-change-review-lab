@@ -72,7 +72,7 @@ export function ScenarioChart({ metricKey, data }: ScenarioChartProps): React.JS
       </p>
 
       {/* Responsive Recharts Container */}
-      <div className="w-full h-72 sm:h-80" aria-hidden="true">
+      <div className="w-full h-72 sm:h-80">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 10, right: 20, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />

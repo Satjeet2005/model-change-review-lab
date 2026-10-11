@@ -15,11 +15,20 @@ export function ResetDialog({
   const cancelBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      // Focus cancel button by default to prevent accidental confirmation
-      cancelBtnRef.current?.focus();
+    if (!isOpen) return;
+    // Focus cancel button by default to prevent accidental confirmation
+    cancelBtnRef.current?.focus();
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+      }
     }
-  }, [isOpen]);
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onCancel]);
 
   if (!isOpen) return null;
 
