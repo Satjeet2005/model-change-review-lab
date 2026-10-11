@@ -18,7 +18,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'model', label: 'Model', implemented: true },
   { id: 'compare', label: 'Scenario Compare', implemented: true },
   { id: 'history', label: 'History', implemented: true },
-  { id: 'performance', label: 'Performance Lab', implemented: false }
+  { id: 'performance', label: 'Performance Lab', implemented: true }
 ];
 
 export function AppShell({ children }: AppShellProps): React.JSX.Element {

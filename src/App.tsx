@@ -6,6 +6,7 @@ import { ModelPage } from '@/pages/ModelPage';
 import { useAppState, useAppDispatch } from '@/state/AppProvider';
 import { HistoryPanel } from '@/components/history/HistoryPanel';
 import { ScenarioPage } from '@/pages/ScenarioPage';
+import { PerformanceLabPage } from '@/pages/PerformanceLabPage';
 
 function AppContent(): React.JSX.Element {
   const { activeTab, changeHistory } = useAppState();
@@ -23,6 +24,10 @@ function AppContent(): React.JSX.Element {
 
   if (activeTab === 'compare') {
     return <ScenarioPage />;
+  }
+
+  if (activeTab === 'performance') {
+    return <PerformanceLabPage />;
   }
 
   return <ModelPage />;

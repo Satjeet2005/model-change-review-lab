@@ -43,9 +43,9 @@ describe('AppShell Component (T-028)', () => {
     const compareTab = screen.getByRole('button', { name: /^Scenario Compare$/ });
     expect(compareTab).not.toBeDisabled();
 
-    // Future tab still disabled (Phase 6)
-    const perfTab = screen.getByRole('button', { name: /Performance Lab/ });
-    expect(perfTab).toBeDisabled();
+    // Performance Lab tab is implemented in Phase 6
+    const perfTab = screen.getByRole('button', { name: /^Performance Lab$/ });
+    expect(perfTab).not.toBeDisabled();
 
     // Undo is initially disabled when change history is empty
     const undoBtn = screen.getByRole('button', { name: /Undo/ });
