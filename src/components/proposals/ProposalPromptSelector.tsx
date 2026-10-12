@@ -12,14 +12,16 @@ export interface ProposalPromptSelectorProps {
 export function ProposalPromptSelector({
   provider = new MockProposalProvider()
 }: ProposalPromptSelectorProps): React.JSX.Element {
-  const { workingAssumptions, revision, proposalStatus } = useAppState();
+  const { workingAssumptions, revision, proposalStatus, proposalWorkspace, pendingProposal } =
+    useAppState();
   const dispatch = useAppDispatch();
   const [generatingId, setGeneratingId] = useState<ProposalTemplateId | null>(null);
 
   const isGenerating = proposalStatus === 'generating';
+  const hasActiveWorkspace = Boolean(proposalWorkspace || pendingProposal);
 
   async function handleSelectPreset(templateId: ProposalTemplateId) {
-    if (isGenerating) return;
+    if (isGenerating || hasActiveWorkspace) return;
 
     const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const requestRevision = revision;
@@ -100,6 +102,15 @@ export function ProposalPromptSelector({
         </span>
       </div>
 
+      {hasActiveWorkspace && (
+        <div className="mb-3 p-2.5 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800 flex items-center justify-between">
+          <span>
+            <strong>Active Proposal in Review:</strong> Review, accept, or reject the open draft
+            before generating a new preset proposal.
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {PROPOSAL_PRESETS.map((preset) => {
           const isLoadingThis = isGenerating && generatingId === preset.id;
@@ -120,9 +131,14 @@ export function ProposalPromptSelector({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={isGenerating}
+                disabled={isGenerating || hasActiveWorkspace}
                 onClick={() => handleSelectPreset(preset.id)}
-                className="w-full mt-1 border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+                title={
+                  hasActiveWorkspace
+                    ? 'A proposal workspace is already active. Review, accept, or reject the current draft first.'
+                    : 'Generate proposal'
+                }
+                className="w-full mt-1 border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800 disabled:opacity-50"
               >
                 {isLoadingThis ? 'Generating proposal…' : 'Generate Proposal'}
               </Button>

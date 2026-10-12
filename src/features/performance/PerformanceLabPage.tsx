@@ -105,7 +105,7 @@ export function PerformanceLabPage(): React.JSX.Element {
       newOverrides[cellKey] = (newOverrides[cellKey] ?? targetRow.values[0] ?? 1000) + (i + 1) * 10;
       const t1 = performance.now();
 
-      const sampleLatency = Math.max(0.1, Math.round((t1 - t0) * 100) / 100);
+      const sampleLatency = Math.round((t1 - t0) * 100) / 100;
       collectedSamples.push(sampleLatency);
     }
 
@@ -195,7 +195,8 @@ export function PerformanceLabPage(): React.JSX.Element {
         <LabMetricsBanner measurements={measurements} />
         {manualEditLatency !== null && (
           <div className="text-[11px] text-neutral-500 italic text-right mt-1.5">
-            Last manual interaction duration: {manualEditLatency.toFixed(1)} ms (includes human
+            Last manual interaction duration:{' '}
+            {manualEditLatency < 0.1 ? '< 0.1' : manualEditLatency.toFixed(1)} ms (includes human
             typing delay)
           </div>
         )}

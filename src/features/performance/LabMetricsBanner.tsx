@@ -118,18 +118,25 @@ export function LabMetricsBanner({ measurements }: LabMetricsBannerProps): React
         </div>
       </div>
 
-      {/* 5. Override Mutation Latency */}
+      {/* 5. In-Memory Override Mutation Duration */}
       <div className="bg-white border border-neutral-200 rounded-lg p-4 shadow-xs flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">
-            <span>Override Latency (p95)</span>
+            <span title="Synchronous property assignment only; excludes React render/commit/paint">
+              In-Memory Override Mutation Duration (p95)
+            </span>
             <span className="text-neutral-400 font-normal lowercase">in-memory</span>
           </div>
           <div className="text-xl font-bold font-mono text-neutral-900 tracking-tight my-1">
             {isError ? (
               <span className="text-sm font-normal text-red-600">Unavailable</span>
             ) : measurements.editPercentiles ? (
-              <span>p95: {measurements.editPercentiles.p95.toFixed(1)} ms</span>
+              <span>
+                p95:{' '}
+                {measurements.editPercentiles.p95 < 0.1
+                  ? '< 0.1 ms'
+                  : `${measurements.editPercentiles.p95.toFixed(1)} ms`}
+              </span>
             ) : measurements.editSamples.length > 0 ? (
               <span className="text-xs font-medium text-amber-700">
                 {measurements.editSamples.length} / 30 samples
@@ -141,9 +148,16 @@ export function LabMetricsBanner({ measurements }: LabMetricsBannerProps): React
         </div>
         <div className="text-[11px] text-neutral-500 pt-2 border-t border-neutral-100 flex items-center justify-between">
           <span>Target: &lt; {DIAGNOSTIC_TARGETS.editLatencyP95Ms} ms</span>
-          <span className="text-neutral-600 font-medium">
+          <span
+            className="text-neutral-600 font-medium"
+            title="Synchronous property assignment only; excludes React render/commit/paint"
+          >
             {measurements.editPercentiles
-              ? `p50: ${measurements.editPercentiles.p50.toFixed(1)}ms (${measurements.editSamples.length})`
+              ? `p50: ${
+                  measurements.editPercentiles.p50 < 0.1
+                    ? '< 0.1ms'
+                    : `${measurements.editPercentiles.p50.toFixed(1)}ms`
+                } (${measurements.editSamples.length})`
               : `${measurements.editSamples.length} collected`}
           </span>
         </div>

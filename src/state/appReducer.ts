@@ -26,23 +26,33 @@ export type AppAction =
   | { type: 'SET_ACTIVE_TAB'; tab: NavTabId }
   | {
       type: 'PROPOSAL_GENERATE_START';
-      requestId?: string;
+      requestId: string;
       requestRevision?: number;
       requestAssumptions?: ReadonlyModelAssumptions;
     }
   | {
       type: 'PROPOSAL_GENERATE_SUCCESS';
-      requestId?: string;
+      requestId: string;
       workspace?: ProposalWorkspace;
       proposal?: ChangeProposal;
     }
   | {
       type: 'PROPOSAL_GENERATE_ERROR';
-      requestId?: string;
+      requestId: string;
       error: string;
     }
+  | {
+      type: 'PROPOSAL_GENERATE_CANCEL';
+      requestId: string;
+    }
   | { type: 'WORKSPACE_SELECT_VARIANT'; variantId: string }
-  | { type: 'WORKSPACE_DUPLICATE_VARIANT'; sourceVariantId: string }
+  | {
+      type: 'WORKSPACE_DUPLICATE_VARIANT';
+      sourceVariantId: string;
+      newVariantId: string;
+      newLabel: string;
+      createdAt: string;
+    }
   | { type: 'WORKSPACE_REMOVE_VARIANT'; variantId: string }
   | { type: 'WORKSPACE_RESET_VARIANT_EDITS'; variantId: string }
   | {
@@ -60,6 +70,15 @@ export type AppAction =
   | { type: 'PROPOSAL_DISMISS' }
   | { type: 'UNDO_LAST_TRANSACTION' }
   | { type: 'RESET_TO_BASELINE' };
+
+export function getNextVariantLabel(variants: readonly { label: string }[]): string {
+  const existingLabels = new Set(variants.map((v) => v.label));
+  let nextNum = 2;
+  while (existingLabels.has(`Variant ${nextNum}`)) {
+    nextNum++;
+  }
+  return `Variant ${nextNum}`;
+}
 
 interface ParsedTarget {
   targetKey: string;
@@ -227,19 +246,32 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         activeTab: action.tab
       };
 
-    case 'PROPOSAL_GENERATE_START':
+    case 'PROPOSAL_GENERATE_START': {
+      // Fix 1: Protect active workspace from silent replacement
+      if (state.proposalWorkspace !== null || state.pendingProposal !== null) {
+        return {
+          ...state,
+          proposalError: 'Cannot generate new proposal while a proposal workspace is already active'
+        };
+      }
+
+      if (!action.requestId) {
+        return state;
+      }
+
       return {
         ...state,
         proposalStatus: 'generating',
         proposalError: null,
-        activeGenerationRequestId: action.requestId ?? null
+        activeGenerationRequestId: action.requestId
       };
+    }
 
     case 'PROPOSAL_GENERATE_SUCCESS': {
-      // Async race protection: ignore response if requestId does not match active request
+      // Fix 2: Strict async race correlation: ignore if request IDs don't match active request
       if (
-        action.requestId &&
-        state.activeGenerationRequestId &&
+        !state.activeGenerationRequestId ||
+        !action.requestId ||
         action.requestId !== state.activeGenerationRequestId
       ) {
         return state;
@@ -257,7 +289,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           id: workspace.id,
           title: workspace.title,
           description: workspace.description,
-          operations: selectedVar ? [...selectedVar.operations] : [],
+          operations: selectedVar ? cloneProposalOperations(selectedVar.operations) : [],
           baseRevision: workspace.baseRevision,
           createdAt: workspace.createdAt
         };
@@ -300,10 +332,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'PROPOSAL_GENERATE_ERROR': {
-      // Async race protection: ignore error if requestId does not match active request
+      // Fix 2: Strict async race correlation: ignore error if requestId doesn't match active request
       if (
-        action.requestId &&
-        state.activeGenerationRequestId &&
+        !state.activeGenerationRequestId ||
+        !action.requestId ||
         action.requestId !== state.activeGenerationRequestId
       ) {
         return state;
@@ -313,6 +345,23 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         proposalStatus: 'error',
         proposalError: action.error,
+        activeGenerationRequestId: null
+      };
+    }
+
+    case 'PROPOSAL_GENERATE_CANCEL': {
+      // Correlate cancellation with active generation request
+      if (
+        !state.activeGenerationRequestId ||
+        !action.requestId ||
+        action.requestId !== state.activeGenerationRequestId
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        proposalStatus: 'idle',
+        proposalError: null,
         activeGenerationRequestId: null
       };
     }
@@ -330,7 +379,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const updatedPending: ChangeProposal | null = state.pendingProposal
         ? {
             ...state.pendingProposal,
-            operations: [...targetVar.operations]
+            operations: cloneProposalOperations(targetVar.operations)
           }
         : null;
 
@@ -349,30 +398,28 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const source = state.proposalWorkspace.variants.find((v) => v.id === action.sourceVariantId);
       if (!source) return state;
 
-      const newVariantId = `var-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      const newLabel = `Variant ${state.proposalWorkspace.variants.length + 1}`;
       const clonedOps = cloneProposalOperations(source.operations);
 
       const newVariant: ProposalVariant = {
-        id: newVariantId,
-        label: newLabel,
+        id: action.newVariantId,
+        label: action.newLabel,
         sourceTemplateId: source.sourceTemplateId,
         duplicatedFromVariantId: source.id,
         operations: clonedOps,
         resetSnapshotOperations: cloneProposalOperations(clonedOps),
-        createdAt: new Date().toISOString()
+        createdAt: action.createdAt
       };
 
       const updatedWorkspace: ProposalWorkspace = {
         ...state.proposalWorkspace,
         variants: [...state.proposalWorkspace.variants, newVariant],
-        selectedVariantId: newVariantId
+        selectedVariantId: action.newVariantId
       };
 
       const updatedPending: ChangeProposal | null = state.pendingProposal
         ? {
             ...state.pendingProposal,
-            operations: [...newVariant.operations]
+            operations: cloneProposalOperations(newVariant.operations)
           }
         : null;
 
@@ -419,7 +466,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         state.pendingProposal && selectedVar
           ? {
               ...state.pendingProposal,
-              operations: [...selectedVar.operations]
+              operations: cloneProposalOperations(selectedVar.operations)
             }
           : null;
 
@@ -457,7 +504,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         state.pendingProposal && selectedVar
           ? {
               ...state.pendingProposal,
-              operations: [...selectedVar.operations]
+              operations: cloneProposalOperations(selectedVar.operations)
             }
           : null;
 
@@ -501,7 +548,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         state.pendingProposal && selectedVar
           ? {
               ...state.pendingProposal,
-              operations: [...selectedVar.operations]
+              operations: cloneProposalOperations(selectedVar.operations)
             }
           : null;
 
@@ -514,11 +561,21 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'WORKSPACE_SET_COMPARISON_VARIANTS': {
       if (!state.proposalWorkspace) return state;
+      // Fix 9: Validate comparison variant IDs exist in current workspace
+      const validIds = action.variantIds.filter(
+        (id): id is string =>
+          typeof id === 'string' && state.proposalWorkspace!.variants.some((v) => v.id === id)
+      );
+      if (validIds.length === 0) return state;
+
+      const validComparisonIds: readonly [string, string?] =
+        validIds.length > 1 ? [validIds[0]!, validIds[1]!] : [validIds[0]!];
+
       return {
         ...state,
         proposalWorkspace: {
           ...state.proposalWorkspace,
-          comparisonVariantIds: action.variantIds
+          comparisonVariantIds: validComparisonIds
         }
       };
     }
@@ -532,7 +589,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         pendingProposal: null,
         archivedStaleWorkspaces: newArchived,
         proposalStatus: 'idle',
-        proposalError: null
+        proposalError: null,
+        activeGenerationRequestId: null
       };
     }
 
@@ -688,7 +746,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           revision: transaction.resultingRevision,
           changeHistory: [transaction, ...state.changeHistory],
           proposalStatus: 'accepted',
-          proposalError: null
+          proposalError: null,
+          activeGenerationRequestId: null
         };
       } catch (err) {
         return {
@@ -705,7 +764,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         proposalWorkspace: null,
         pendingProposal: null,
         proposalStatus: 'rejected',
-        proposalError: null
+        proposalError: null,
+        activeGenerationRequestId: null
       };
 
     case 'PROPOSAL_DISMISS':
@@ -714,7 +774,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         proposalWorkspace: null,
         pendingProposal: null,
         proposalStatus: 'idle',
-        proposalError: null
+        proposalError: null,
+        activeGenerationRequestId: null
       };
 
     case 'UNDO_LAST_TRANSACTION': {
@@ -750,7 +811,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         changeHistory: remainingHistory,
         editingCell: null,
         editingValue: '',
-        validationError: null
+        validationError: null,
+        proposalStatus:
+          state.proposalStatus === 'accepted' || state.proposalStatus === 'generating'
+            ? 'idle'
+            : state.proposalStatus,
+        proposalError: state.proposalStatus === 'generating' ? null : state.proposalError,
+        activeGenerationRequestId: null
       };
     }
 

@@ -1,6 +1,7 @@
 import { roundMoney } from '../utils/math';
 import { calculateModel } from './calculation';
 import { applyOperationsToDraft } from './operations';
+import { validateVariantOperationsForPreview } from './validation';
 import {
   CalculatedModel,
   CalculatedRowKey,
@@ -118,22 +119,39 @@ export function calculateProposalVariantComparison(
   variantAOps: readonly ProposalOperation[] = [],
   variantBOps?: readonly ProposalOperation[]
 ): ProposalVariantComparisonResult {
+  // Strict operation validation for preview/comparison (PRD §4.3, §7.3, §9.1)
+  const valA = validateVariantOperationsForPreview(variantAOps, baseAssumptions);
+  if (!valA.valid) {
+    throw new Error(
+      `Invalid operations in Variant A: ${valA.errors.map((e) => e.message).join('; ')}`
+    );
+  }
+
+  if (variantBOps !== undefined) {
+    const valB = validateVariantOperationsForPreview(variantBOps, baseAssumptions);
+    if (!valB.valid) {
+      throw new Error(
+        `Invalid operations in Variant B: ${valB.errors.map((e) => e.message).join('; ')}`
+      );
+    }
+  }
+
   const baseModel = calculateModel(baseAssumptions);
 
-  // Variant A calculation
+  // Variant A calculation (independent model instance to prevent reference aliasing)
   let variantAModel: CalculatedModel;
   if (!variantAOps || variantAOps.length === 0) {
-    variantAModel = baseModel;
+    variantAModel = calculateModel(baseAssumptions);
   } else {
     const draftA = applyOperationsToDraft(baseAssumptions, [...variantAOps]);
     variantAModel = calculateModel(draftA);
   }
 
-  // Variant B calculation (optional)
+  // Variant B calculation (independent model instance to prevent reference aliasing)
   let variantBModel: CalculatedModel | undefined;
   if (variantBOps !== undefined) {
     if (variantBOps.length === 0) {
-      variantBModel = baseModel;
+      variantBModel = calculateModel(baseAssumptions);
     } else {
       const draftB = applyOperationsToDraft(baseAssumptions, [...variantBOps]);
       variantBModel = calculateModel(draftB);

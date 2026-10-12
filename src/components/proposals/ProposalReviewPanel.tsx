@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef } from 'react';
 import { useAppState, useAppDispatch } from '@/state/AppProvider';
+import { getNextVariantLabel } from '@/state/appReducer';
 import {
   CalculatedRowKey,
   CellId,
@@ -8,7 +9,10 @@ import {
   ProposalVariant,
   ProposalWorkspace
 } from '@/domain/types';
-import { validateProposalAcceptance } from '@/domain/validation';
+import {
+  validateProposalAcceptance,
+  validateVariantOperationsForPreview
+} from '@/domain/validation';
 import { MockProposalProvider } from '@/domain/proposals';
 import { cloneModelAssumptions, cloneProposalOperations } from '@/domain/operations';
 import { calculateProposalVariantComparison } from '@/domain/proposalComparison';
@@ -100,12 +104,40 @@ export function ProposalReviewPanel({
     return activeWorkspace.variants.find((v) => v.id !== selectedVariant?.id) ?? null;
   }, [activeWorkspace, comparisonVariantBId, selectedVariant]);
 
+  // Validate variant operations for preview (Fix 4)
+  const variantAValidation = useMemo(
+    () => validateVariantOperationsForPreview(activeOperations, baseAssumptions),
+    [activeOperations, baseAssumptions]
+  );
+
+  const variantBValidation = useMemo(
+    () =>
+      isCompareMode && variantB
+        ? validateVariantOperationsForPreview(variantB.operations, baseAssumptions)
+        : { valid: true, errors: [] },
+    [isCompareMode, variantB, baseAssumptions]
+  );
+
+  const hasPreviewValidationErrors = !variantAValidation.valid || !variantBValidation.valid;
+
   // Pure 24-month comparison calculation
   const comparisonResult = useMemo(() => {
-    if (!selectedVariant) return null;
-    const variantBOps = isCompareMode && variantB ? variantB.operations : undefined;
-    return calculateProposalVariantComparison(baseAssumptions, activeOperations, variantBOps);
-  }, [baseAssumptions, activeOperations, isCompareMode, variantB, selectedVariant]);
+    if (!selectedVariant || isStale || hasPreviewValidationErrors) return null;
+    try {
+      const variantBOps = isCompareMode && variantB ? variantB.operations : undefined;
+      return calculateProposalVariantComparison(baseAssumptions, activeOperations, variantBOps);
+    } catch {
+      return null;
+    }
+  }, [
+    baseAssumptions,
+    activeOperations,
+    isCompareMode,
+    variantB,
+    selectedVariant,
+    isStale,
+    hasPreviewValidationErrors
+  ]);
 
   // Revalidate current operations against base assumptions
   const operationsValidation = useMemo(() => {
@@ -153,10 +185,16 @@ export function ProposalReviewPanel({
   }
 
   function handleDuplicateVariant() {
-    if (!selectedVariant || isStale) return;
+    if (!selectedVariant || isStale || !activeWorkspace) return;
+    const newLabel = getNextVariantLabel(activeWorkspace.variants);
+    const newVariantId = `var-${selectedVariant.id}-dup-${Date.now()}`;
+    const createdAt = new Date().toISOString();
     dispatch({
       type: 'WORKSPACE_DUPLICATE_VARIANT',
-      sourceVariantId: selectedVariant.id
+      sourceVariantId: selectedVariant.id,
+      newVariantId,
+      newLabel,
+      createdAt
     });
   }
 
@@ -345,20 +383,49 @@ export function ProposalReviewPanel({
             <span className="text-[11px] text-neutral-500">Read-only historical snapshots</span>
           </div>
           <div className="space-y-2">
-            {archivedStaleWorkspaces.map((ws) => (
-              <div
-                key={ws.id}
-                className="p-3 bg-white border border-neutral-200 rounded-md text-xs flex justify-between items-center"
-              >
-                <div>
-                  <span className="font-semibold text-neutral-800">{ws.title}</span>
-                  <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-mono">
-                    Historical Base Rev: {ws.baseRevision}
-                  </span>
+            {archivedStaleWorkspaces.map((ws) => {
+              const isInspecting = inspectingArchivedId === ws.id;
+              return (
+                <div
+                  key={ws.id}
+                  className="p-3 bg-white border border-neutral-200 rounded-md text-xs space-y-2"
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="font-semibold text-neutral-800">{ws.title}</span>
+                      <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-mono">
+                        Historical Base Rev: {ws.baseRevision}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-neutral-500">{ws.variants.length} variants</span>
+                      <button
+                        type="button"
+                        onClick={() => setInspectingArchivedId(isInspecting ? null : ws.id)}
+                        className="text-xs text-blue-600 hover:underline cursor-pointer"
+                      >
+                        {isInspecting ? 'Hide operations' : 'Inspect operations'}
+                      </button>
+                    </div>
+                  </div>
+                  {isInspecting && (
+                    <div className="mt-2 pt-2 border-t border-neutral-200 space-y-3">
+                      {ws.variants.map((v) => (
+                        <div key={v.id} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-neutral-700">{v.label}</span>
+                            <span className="text-[10px] text-neutral-400 font-mono">
+                              (Historical Snapshot — Base Rev {ws.baseRevision})
+                            </span>
+                          </div>
+                          <ProposalDiff operations={v.operations} readOnly={true} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <span className="text-neutral-500">{ws.variants.length} variants</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       );
@@ -527,8 +594,30 @@ export function ProposalReviewPanel({
         </InlineNotice>
       )}
 
-      {/* 5. Projected Impact Preview (Suppressed when stale per PRD §6.8, §7.3) */}
-      {!isStale && comparisonResult && (
+      {/* 5. Projected Impact Preview (Suppressed when stale per PRD §6.8, §7.3 or when variant ops fail validation) */}
+      {!isStale && hasPreviewValidationErrors && (
+        <InlineNotice variant="error" title="Preview Unavailable: Invalid Operations">
+          <p className="text-xs">
+            Impact preview is suppressed because one or more variant operations failed validation.
+          </p>
+          <ul className="mt-1 list-disc list-inside text-xs space-y-0.5">
+            {!variantAValidation.valid &&
+              variantAValidation.errors.map((e, idx) => (
+                <li key={`a-${idx}`}>
+                  {selectedVariant?.label ?? 'Series A'}: {e.message}
+                </li>
+              ))}
+            {!variantBValidation.valid &&
+              variantBValidation.errors.map((e, idx) => (
+                <li key={`b-${idx}`}>
+                  {variantB?.label ?? 'Series B'}: {e.message}
+                </li>
+              ))}
+          </ul>
+        </InlineNotice>
+      )}
+
+      {!isStale && !hasPreviewValidationErrors && comparisonResult && (
         <div className="space-y-3 pt-1">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-100 pb-2">
             <div className="flex items-center gap-2">
@@ -694,13 +783,52 @@ export function ProposalReviewPanel({
       )}
 
       {/* 6. Structured Diff Table */}
-      <div id={selectedVariant ? `panel-${selectedVariant.id}` : undefined}>
-        <ProposalDiff
-          operations={activeOperations}
-          onEditOperation={handleEditOperation}
-          readOnly={isStale}
-        />
-      </div>
+      {activeWorkspace ? (
+        <>
+          {/* Active variant panel containing editable ProposalDiff */}
+          {selectedVariant && (
+            <div
+              role="tabpanel"
+              id={`panel-${selectedVariant.id}`}
+              aria-labelledby={`tab-${selectedVariant.id}`}
+              tabIndex={0}
+            >
+              <ProposalDiff
+                operations={activeOperations}
+                onEditOperation={handleEditOperation}
+                readOnly={isStale}
+              />
+            </div>
+          )}
+          {/* Inactive variant panels: present in DOM for aria-controls targets, hidden from view & accessibility tree */}
+          {activeWorkspace.variants
+            .filter((v) => v.id !== selectedVariant?.id)
+            .map((v) => (
+              <div
+                key={v.id}
+                role="tabpanel"
+                id={`panel-${v.id}`}
+                aria-labelledby={`tab-${v.id}`}
+                tabIndex={-1}
+                hidden
+                className="hidden"
+              />
+            ))}
+        </>
+      ) : (
+        <div
+          role="tabpanel"
+          id={selectedVariant ? `panel-${selectedVariant.id}` : 'panel-default'}
+          aria-labelledby={selectedVariant ? `tab-${selectedVariant.id}` : undefined}
+          tabIndex={0}
+        >
+          <ProposalDiff
+            operations={activeOperations}
+            onEditOperation={handleEditOperation}
+            readOnly={isStale}
+          />
+        </div>
+      )}
 
       {/* 7. Action Bar: Human Decision Gateway */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-neutral-100">
@@ -778,11 +906,18 @@ export function ProposalReviewPanel({
                     </div>
 
                     {isInspecting && (
-                      <div className="mt-2 pt-2 border-t border-neutral-200">
-                        <ProposalDiff
-                          operations={archived.variants[0]?.operations ?? []}
-                          readOnly={true}
-                        />
+                      <div className="mt-2 pt-2 border-t border-neutral-200 space-y-3">
+                        {archived.variants.map((v) => (
+                          <div key={v.id} className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-neutral-700">{v.label}</span>
+                              <span className="text-[10px] text-neutral-400 font-mono">
+                                (Historical Snapshot — Base Rev {archived.baseRevision})
+                              </span>
+                            </div>
+                            <ProposalDiff operations={v.operations} readOnly={true} />
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>

@@ -195,16 +195,15 @@ export function validateOperationSet(operations: readonly ProposalOperation[]): 
 }
 
 /**
- * Hardened validation for proposal acceptance.
- * Enforces mandatory base assumptions, canonical cell ID syntax, unit matching,
- * target uniqueness, non-empty set, base value numeric equality, and non-no-op criteria.
+ * Strict validation of variant operations for proposal impact preview and comparison.
+ * Empty operation sets are treated as valid (representing an unchanged base scenario).
+ * Non-empty operation sets must strictly validate targetKey, targetPeriod, targetCellId,
+ * displayUnit, previousValue against baseAssumptions, numeric bounds, and uniqueness.
  */
-export function validateProposalAcceptance(
-  operations: readonly ProposalOperation[],
+export function validateVariantOperationsForPreview(
+  operations: readonly ProposalOperation[] = [],
   baseAssumptions: ReadonlyModelAssumptions
 ): ValidationResult {
-  const errors: ValidationError[] = [];
-
   if (
     !baseAssumptions ||
     !Array.isArray(baseAssumptions.months) ||
@@ -223,22 +222,13 @@ export function validateProposalAcceptance(
     };
   }
 
+  // Pure preview allows empty operations (produces unchanged base)
   if (!operations || operations.length === 0) {
-    return {
-      valid: false,
-      errors: [
-        {
-          targetKey: '',
-          targetPeriod: null,
-          message: 'Operation set cannot be empty',
-          rejectedValue: operations
-        }
-      ]
-    };
+    return { valid: true, errors: [] };
   }
 
+  const errors: ValidationError[] = [];
   const seenTargets = new Set<string>();
-  let hasEffectiveChanges = false;
 
   for (const op of operations) {
     const { targetKey, targetPeriod, targetCellId, previousValue, proposedValue, displayUnit } = op;
@@ -359,25 +349,60 @@ export function validateProposalAcceptance(
     if (valError) {
       errors.push(valError);
     }
-
-    // Check for effective change
-    if (proposedValue !== previousValue) {
-      hasEffectiveChanges = true;
-    }
-  }
-
-  // Check that at least one proposed value differs from previousValue
-  if (!hasEffectiveChanges && errors.length === 0) {
-    errors.push({
-      targetKey: '',
-      targetPeriod: null,
-      message: 'No changes to apply: all proposed values equal base values',
-      rejectedValue: null
-    });
   }
 
   return {
     valid: errors.length === 0,
     errors
+  };
+}
+
+/**
+ * Hardened validation for proposal acceptance.
+ * Enforces mandatory base assumptions, canonical cell ID syntax, unit matching,
+ * target uniqueness, non-empty set, base value numeric equality, and non-no-op criteria.
+ */
+export function validateProposalAcceptance(
+  operations: readonly ProposalOperation[],
+  baseAssumptions: ReadonlyModelAssumptions
+): ValidationResult {
+  if (!operations || operations.length === 0) {
+    return {
+      valid: false,
+      errors: [
+        {
+          targetKey: '',
+          targetPeriod: null,
+          message: 'Operation set cannot be empty',
+          rejectedValue: operations
+        }
+      ]
+    };
+  }
+
+  const previewValidation = validateVariantOperationsForPreview(operations, baseAssumptions);
+  if (!previewValidation.valid) {
+    return previewValidation;
+  }
+
+  // Check for effective change (at least one proposed value differs from previousValue)
+  const hasEffectiveChanges = operations.some((op) => op.proposedValue !== op.previousValue);
+  if (!hasEffectiveChanges) {
+    return {
+      valid: false,
+      errors: [
+        {
+          targetKey: '',
+          targetPeriod: null,
+          message: 'No changes to apply: all proposed values equal base values',
+          rejectedValue: null
+        }
+      ]
+    };
+  }
+
+  return {
+    valid: true,
+    errors: []
   };
 }

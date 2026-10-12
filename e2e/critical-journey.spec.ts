@@ -67,24 +67,44 @@ test.describe('Critical E2E Happy Path Journey (T-093 / PRD Test 53)', () => {
       '$1,356,544.45'
     );
 
-    // 6. Edit one proposed value in the diff and accept proposal
+    // 6. Duplicate variant to Variant 2, edit independently, and compare
+    const dupBtn = reviewPanel.getByRole('button', { name: /\+ Duplicate/ });
+    await dupBtn.click();
+    await expect(page.getByRole('tab', { name: 'Variant 2' })).toBeVisible();
+
+    // Edit one proposed value in Variant 2
     const firstRowEditBtn = reviewPanel.getByRole('button', { name: 'Edit' }).first();
     await firstRowEditBtn.click();
-
-    // Edit input appears
     const editInput = reviewPanel.locator('tbody input[type="text"]').first();
-    await editInput.fill('15');
+    await editInput.fill('18');
     await editInput.press('Enter');
 
-    // Accept proposal
-    const acceptBtn = reviewPanel.getByRole('button', { name: 'Accept Proposal' });
+    // Switch to compare 2 variants mode
+    const compareBtn = reviewPanel.getByRole('button', { name: 'Compare 2 Variants' });
+    await compareBtn.click();
+    await expect(reviewPanel.getByLabel('Series B Variant')).toBeVisible();
+
+    // Accept Variant 2
+    const acceptBtn = reviewPanel.getByRole('button', { name: 'Accept Variant 2' });
     await acceptBtn.click();
 
-    // 7. Verify atomic commit: review panel shows accepted state or closes, and Undo is enabled
+    // 7. Verify atomic commit: review panel shows accepted state, and Undo is enabled
+    await expect(page.getByText('Change Proposal Accepted')).toBeVisible();
+    await page.getByRole('button', { name: 'Dismiss' }).click();
+    await expect(page.getByText('Change Proposal Accepted')).not.toBeVisible();
     const undoBtn = page.getByRole('button', { name: 'Undo' });
     await expect(undoBtn).toBeEnabled();
 
-    // 8. Inspect Scenario Comparison
+    // 8. Inspect History Panel to verify provenance metadata
+    await page.getByRole('button', { name: 'History' }).click();
+    await expect(page.getByRole('region', { name: 'Committed Change History' })).toBeVisible();
+    await expect(page.getByText('Variant 2')).toBeVisible();
+    await expect(page.getByText(/Accepted proposal:/)).toBeVisible();
+
+    // Return to Model tab
+    await page.getByRole('button', { name: 'Model' }).click();
+
+    // 9. Inspect Scenario Comparison
     await page.getByRole('button', { name: 'Scenario Compare' }).click();
     await expect(
       page.getByRole('heading', { level: 1, name: 'Scenario Variance & Comparison' })
@@ -93,7 +113,7 @@ test.describe('Critical E2E Happy Path Journey (T-093 / PRD Test 53)', () => {
     await expect(page.getByRole('region', { name: /Scenario Comparison Chart/ })).toBeVisible();
     await expect(page.locator('table')).toBeVisible();
 
-    // 9. Inspect Trace Panel on Model page
+    // 10. Inspect Trace Panel on Model page
     await page.getByRole('button', { name: 'Model' }).click();
     // Click a calculated cell to trace
     const calculatedCellBtn = page
@@ -109,13 +129,13 @@ test.describe('Critical E2E Happy Path Journey (T-093 / PRD Test 53)', () => {
     await page.getByRole('button', { name: 'Close trace panel' }).click();
     await expect(tracePanel).not.toBeVisible();
 
-    // 10. Undo latest proposal transaction
+    // 11. Undo latest proposal transaction
     await undoBtn.click();
 
-    // 11. Verify restoration: Undo is now disabled (single-level) and working model returned to baseline
+    // 12. Verify restoration: Undo is now disabled (single-level) and working model returned to baseline
     await expect(undoBtn).toBeDisabled();
 
-    // 12. Reject a proposal: Generate another proposal and reject it
+    // 13. Reject a proposal: Generate another proposal and reject it
     await page.getByRole('button', { name: 'Generate Proposal' }).nth(1).click();
     const secondReviewPanel = page.getByRole('region', {
       name: 'Change Proposal Review and Approval Panel'
@@ -125,7 +145,7 @@ test.describe('Critical E2E Happy Path Journey (T-093 / PRD Test 53)', () => {
     const rejectBtn = secondReviewPanel.getByRole('button', { name: 'Reject Proposal' });
     await rejectBtn.click();
 
-    // 13. Exercise Reset confirmation dialog (cancel vs confirm)
+    // 14. Exercise Reset confirmation dialog (cancel vs confirm)
     const resetBtn = page.getByRole('button', { name: 'Reset' });
     await resetBtn.click();
 
@@ -136,7 +156,7 @@ test.describe('Critical E2E Happy Path Journey (T-093 / PRD Test 53)', () => {
     await page.keyboard.press('Escape');
     await expect(resetDialog).not.toBeVisible();
 
-    // 14. Performance Lab verification
+    // 15. Performance Lab verification
     await page.getByRole('button', { name: 'Performance Lab' }).click();
     await expect(page.getByRole('heading', { level: 1, name: /Performance Lab/ })).toBeVisible();
 
@@ -155,7 +175,7 @@ test.describe('Critical E2E Happy Path Journey (T-093 / PRD Test 53)', () => {
     expect(rowCount).toBeGreaterThan(0);
     expect(rowCount).toBeLessThan(100);
 
-    // 15. Verify zero prohibited external AI/network requests
+    // 16. Verify zero prohibited external AI/network requests
     expect(prohibitedRequests).toEqual([]);
   });
 });

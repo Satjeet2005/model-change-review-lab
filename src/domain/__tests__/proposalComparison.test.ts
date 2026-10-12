@@ -135,6 +135,37 @@ describe('Proposal Variant Comparison Engine (calculateProposalVariantComparison
     expect(result.metrics.revenue.months[0]?.baseValue).toBe(0);
     expect(result.metrics.revenue.months[0]?.variantAPercentageDelta).toBeNull();
   });
+
+  it('guarantees model reference independence (non-aliasing) even with empty operations (Fix 7)', () => {
+    const result = calculateProposalVariantComparison(seed, [], []);
+
+    expect(result.variantAModel).toBeDefined();
+    expect(result.variantBModel).toBeDefined();
+    // Distinct object references to prevent accidental in-place mutation aliasing
+    expect(result.variantAModel).not.toBe(result.baseModel);
+    expect(result.variantBModel).not.toBe(result.baseModel);
+    expect(result.variantAModel).not.toBe(result.variantBModel);
+  });
+
+  it('throws descriptive error on malformed or out-of-bounds operations in Variant A or Variant B (Fix 4)', () => {
+    const invalidOp: ProposalOperation = {
+      targetKey: 'engineeringFte',
+      targetPeriod: 7,
+      targetCellId: 'assumption:engineeringFte:M07',
+      previousValue: 14,
+      proposedValue: -5, // Negative FTE is strictly invalid
+      displayUnit: 'fte',
+      changeLabel: 'Negative FTE'
+    };
+
+    expect(() => calculateProposalVariantComparison(seed, [invalidOp])).toThrow(
+      /Invalid operations in Variant A/
+    );
+
+    expect(() => calculateProposalVariantComparison(seed, hireEngOps, [invalidOp])).toThrow(
+      /Invalid operations in Variant B/
+    );
+  });
 });
 
 function roundMoney(val: number): number {

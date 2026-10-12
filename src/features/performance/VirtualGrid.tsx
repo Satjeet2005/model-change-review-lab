@@ -125,7 +125,7 @@ export function VirtualGrid({
       const num = parseFloat(draftValue);
       if (!isNaN(num)) {
         const tEnd = performance.now();
-        const latencyMs = Math.max(0.1, Math.round((tEnd - editStartRef.current) * 100) / 100);
+        const latencyMs = Math.round((tEnd - editStartRef.current) * 100) / 100;
         onCellOverrideChange(cellKey, num, latencyMs);
       }
       setEditingCellKey(null);

@@ -158,7 +158,15 @@ describe('History, Undo & Reset Lifecycle (T-066 / PRD Tests 41-43 / FR-015, FR-
       state0.workingAssumptions,
       state0.revision
     );
-    const state1 = appReducer(state0, { type: 'PROPOSAL_GENERATE_SUCCESS', proposal });
+    const stateStart = appReducer(state0, {
+      type: 'PROPOSAL_GENERATE_START',
+      requestId: 'req-history-1'
+    });
+    const state1 = appReducer(stateStart, {
+      type: 'PROPOSAL_GENERATE_SUCCESS',
+      requestId: 'req-history-1',
+      proposal
+    });
     expect(state1.pendingProposal?.baseRevision).toBe(1);
 
     // 2. Commit a manual edit -> revision 2
