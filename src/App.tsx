@@ -3,21 +3,25 @@ import { AppProvider } from '@/state/AppProvider';
 import { AppShell } from '@/components/shell/AppShell';
 import { ModelPage } from '@/pages/ModelPage';
 
-import { useAppState, useAppDispatch } from '@/state/AppProvider';
+import { useAppState } from '@/state/AppProvider';
+import { useAppCommands } from '@/api/useAppCommands';
 import { HistoryPanel } from '@/components/history/HistoryPanel';
 import { ScenarioPage } from '@/pages/ScenarioPage';
 import { PerformanceLabPage } from '@/pages/PerformanceLabPage';
 
 function AppContent(): React.JSX.Element {
-  const { activeTab, changeHistory } = useAppState();
-  const dispatch = useAppDispatch();
+  const { activeTab, changeHistory, canUndo, isMutating } = useAppState();
+  const commands = useAppCommands();
+
+  const isUndoAvailable =
+    (typeof canUndo === 'boolean' ? canUndo : changeHistory.length > 0) && !isMutating;
 
   if (activeTab === 'history') {
     return (
       <HistoryPanel
         history={changeHistory}
-        canUndo={changeHistory.length > 0}
-        onUndoLast={() => dispatch({ type: 'UNDO_LAST_TRANSACTION' })}
+        canUndo={isUndoAvailable}
+        onUndoLast={() => commands.undoLastTransaction().catch(() => {})}
       />
     );
   }

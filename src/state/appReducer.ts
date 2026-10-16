@@ -1,4 +1,4 @@
-import { AppState, NavTabId } from './appState';
+import { AppState, NavTabId, ProposalUiStatus } from './appState';
 import {
   CellId,
   ChangeProposal,
@@ -16,6 +16,7 @@ import { calculateModel } from '@/domain/calculation';
 import { cloneModelAssumptions, cloneProposalOperations } from '@/domain/operations';
 import { validateAssumptionValue, validateProposalAcceptance } from '@/domain/validation';
 import { parseEditableValue } from '@/domain/formatting';
+import { SessionSnapshot } from '@/api/types';
 
 export type AppAction =
   | { type: 'DIRECT_EDIT_START'; cellId: CellId; initialValue: string }
@@ -66,10 +67,28 @@ export type AppAction =
   | { type: 'WORKSPACE_DISMISS_STALE' }
   | { type: 'PROPOSAL_EDIT_OPERATION'; targetCellId: CellId; proposedValue: number }
   | { type: 'PROPOSAL_ACCEPT' }
-  | { type: 'PROPOSAL_REJECT' }
-  | { type: 'PROPOSAL_DISMISS' }
+  | { type: 'PROPOSAL_REJECT'; stateVersion?: number }
+  | { type: 'PROPOSAL_DISMISS'; stateVersion?: number }
   | { type: 'UNDO_LAST_TRANSACTION' }
-  | { type: 'RESET_TO_BASELINE' };
+  | { type: 'RESET_TO_BASELINE' }
+  | {
+      type: 'SERVER_SNAPSHOT_APPLIED';
+      snapshot: SessionSnapshot;
+      proposalStatus?: ProposalUiStatus;
+    }
+  | {
+      type: 'WORKSPACE_UPDATED';
+      workspace: ProposalWorkspace;
+      sessionId?: string;
+      epoch?: number;
+    }
+  | { type: 'WORKSPACE_CLOSED' }
+  | { type: 'SET_INITIALIZING'; isInitializing: boolean }
+  | { type: 'SET_MUTATING'; isMutating: boolean }
+  | { type: 'SET_NETWORK_ERROR'; error: string | null }
+  | { type: 'CLEAR_SESSION_EXPIRED_NOTICE' }
+  | { type: 'SET_CONFIG_ERROR'; error: string | null }
+  | { type: 'SET_VALIDATION_ERROR'; error: string | null };
 
 export function getNextVariantLabel(variants: readonly { label: string }[]): string {
   const existingLabels = new Set(variants.map((v) => v.label));
@@ -78,6 +97,32 @@ export function getNextVariantLabel(variants: readonly { label: string }[]): str
     nextNum++;
   }
   return `Variant ${nextNum}`;
+}
+
+export function cloneWorkspace(ws: ProposalWorkspace): ProposalWorkspace {
+  return {
+    id: ws.id,
+    baseRevision: ws.baseRevision,
+    baseAssumptions: cloneModelAssumptions(ws.baseAssumptions),
+    sourceTemplateId: ws.sourceTemplateId,
+    title: ws.title,
+    description: ws.description,
+    status: ws.status,
+    isStale: ws.isStale,
+    stateVersion: ws.stateVersion,
+    variants: ws.variants.map((v) => ({
+      id: v.id,
+      label: v.label,
+      sourceTemplateId: v.sourceTemplateId,
+      duplicatedFromVariantId: v.duplicatedFromVariantId,
+      operations: cloneProposalOperations(v.operations),
+      resetSnapshotOperations: cloneProposalOperations(v.resetSnapshotOperations),
+      createdAt: v.createdAt
+    })),
+    selectedVariantId: ws.selectedVariantId,
+    comparisonVariantIds: [...ws.comparisonVariantIds] as [string, string?],
+    createdAt: ws.createdAt
+  };
 }
 
 interface ParsedTarget {
@@ -261,6 +306,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
       return {
         ...state,
+        workspaceEpoch: state.workspaceEpoch + 1,
         proposalStatus: 'generating',
         proposalError: null,
         activeGenerationRequestId: action.requestId
@@ -321,8 +367,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         return state;
       }
 
+      const nextStateVersion =
+        action.workspace?.stateVersion ?? workspace.stateVersion ?? state.stateVersion + 1;
+
       return {
         ...state,
+        stateVersion: nextStateVersion,
         proposalWorkspace: workspace,
         pendingProposal: legacyProposal,
         proposalStatus: 'review',
@@ -585,6 +635,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const newArchived = [state.proposalWorkspace, ...state.archivedStaleWorkspaces].slice(0, 3);
       return {
         ...state,
+        workspaceEpoch: state.workspaceEpoch + 1,
         proposalWorkspace: null,
         pendingProposal: null,
         archivedStaleWorkspaces: newArchived,
@@ -597,6 +648,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'WORKSPACE_DISMISS_STALE': {
       return {
         ...state,
+        workspaceEpoch: state.workspaceEpoch + 1,
         proposalWorkspace: null,
         pendingProposal: null,
         proposalStatus: 'idle',
@@ -740,6 +792,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
         return {
           ...state,
+          workspaceEpoch: state.workspaceEpoch + 1,
           workingAssumptions: newAssumptions,
           calculatedWorkingModel: calculatedModel,
           traceIndex: newTraceIndex,
@@ -761,6 +814,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       // PRD §7.5 & §16.3: Discard proposal draft; canonical state is completely untouched
       return {
         ...state,
+        stateVersion: action.stateVersion ?? state.stateVersion + 1,
+        workspaceEpoch: state.workspaceEpoch + 1,
         proposalWorkspace: null,
         pendingProposal: null,
         proposalStatus: 'rejected',
@@ -771,6 +826,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'PROPOSAL_DISMISS':
       return {
         ...state,
+        stateVersion: action.stateVersion ?? state.stateVersion,
+        workspaceEpoch: state.workspaceEpoch + 1,
         proposalWorkspace: null,
         pendingProposal: null,
         proposalStatus: 'idle',
@@ -841,6 +898,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         traceIndex: refreshedTraceIndex,
         revision: nextRevision,
         changeHistory: [],
+        workspaceEpoch: state.workspaceEpoch + 1,
         proposalWorkspace: null,
         archivedStaleWorkspaces: [],
         pendingProposal: null,
@@ -851,6 +909,198 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         editingValue: '',
         validationError: null,
         selectedTraceCellId: null
+      };
+    }
+
+    case 'SERVER_SNAPSHOT_APPLIED': {
+      const { snapshot } = action;
+
+      // Ordering guard: if incoming snapshot belongs to current session but has a lower
+      // revision or lower stateVersion than current state, ignore it to prevent stale responses from overwriting newer state (PRD §9.4).
+      // If sessionId changes (legitimate session reset/reseed), accept the new session snapshot even at revision 1 / stateVersion 1.
+      if (
+        state.sessionId &&
+        snapshot.sessionId === state.sessionId &&
+        (snapshot.revision < state.revision || snapshot.stateVersion < state.stateVersion)
+      ) {
+        return state;
+      }
+
+      // Equal-version guard: when snapshot has equal revision and stateVersion, prevent delayed/stale snapshots
+      // from overwriting newer proposal lifecycle state:
+      if (
+        state.sessionId &&
+        snapshot.sessionId === state.sessionId &&
+        snapshot.revision === state.revision &&
+        snapshot.stateVersion === state.stateVersion
+      ) {
+        // 1. In-flight generation must not be overwritten or cancelled by equal-version snapshot
+        if (state.proposalStatus === 'generating') {
+          return state;
+        }
+        // 2. Newly generated active workspace must not be overwritten by equal-version snapshot lacking active workspace
+        if (state.proposalWorkspace && !snapshot.activeWorkspace) {
+          return state;
+        }
+        // 3. Rejected or dismissed workspace must not be restored by equal-version snapshot containing active workspace
+        if (!state.proposalWorkspace && snapshot.activeWorkspace) {
+          return state;
+        }
+        // 4. Rejected status must not be cleared by equal-version snapshot
+        if (state.proposalStatus === 'rejected') {
+          return state;
+        }
+      }
+
+      const baselineAssumptions = cloneModelAssumptions(snapshot.baselineAssumptions);
+      const workingAssumptions = cloneModelAssumptions(snapshot.workingAssumptions);
+      const calculatedWorkingModel = calculateModel(workingAssumptions);
+      const traceIndex = buildTraceIndex(workingAssumptions, calculatedWorkingModel);
+
+      let proposalStatus: ProposalUiStatus =
+        action.proposalStatus ??
+        (snapshot.activeWorkspace
+          ? 'review'
+          : state.proposalStatus === 'generating' ||
+              state.proposalStatus === 'error' ||
+              state.proposalStatus === 'rejected'
+            ? state.proposalStatus
+            : 'idle');
+      let legacyProposal: ChangeProposal | null = null;
+      let workspace: ProposalWorkspace | null = null;
+
+      if (snapshot.activeWorkspace) {
+        const clonedWorkspace = cloneWorkspace(snapshot.activeWorkspace);
+        workspace = clonedWorkspace;
+        proposalStatus = action.proposalStatus ?? 'review';
+        const selectedVar =
+          clonedWorkspace.variants.find((v) => v.id === clonedWorkspace.selectedVariantId) ??
+          clonedWorkspace.variants[0];
+        if (selectedVar) {
+          legacyProposal = {
+            id: clonedWorkspace.id,
+            title: clonedWorkspace.title,
+            description: clonedWorkspace.description,
+            operations: cloneProposalOperations(selectedVar.operations),
+            baseRevision: clonedWorkspace.baseRevision,
+            createdAt: clonedWorkspace.createdAt
+          };
+        }
+      }
+
+      return {
+        ...state,
+        sessionId: snapshot.sessionId,
+        stateVersion: snapshot.stateVersion,
+        workspaceEpoch: state.workspaceEpoch + 1,
+        baselineAssumptions,
+        workingAssumptions,
+        calculatedWorkingModel,
+        traceIndex,
+        revision: snapshot.revision,
+        changeHistory: snapshot.changeHistory,
+        canUndo: snapshot.canUndo,
+        proposalWorkspace: workspace,
+        pendingProposal: legacyProposal,
+        archivedStaleWorkspaces: (snapshot.archivedWorkspaces || []).map(cloneWorkspace),
+        proposalStatus,
+        proposalError: proposalStatus === 'error' ? state.proposalError : null,
+        isInitializing: false,
+        networkError: null,
+        sessionExpiredNotice: snapshot.sessionResetBecauseExpired ?? state.sessionExpiredNotice
+      };
+    }
+
+    case 'WORKSPACE_UPDATED': {
+      // Invalidate if workspace is closed or if sessionId/epoch no longer match current state
+      if (!state.proposalWorkspace) {
+        return state;
+      }
+      if (action.sessionId && state.sessionId && action.sessionId !== state.sessionId) {
+        return state;
+      }
+      if (action.epoch !== undefined && action.epoch !== state.workspaceEpoch) {
+        return state;
+      }
+
+      const workspace = cloneWorkspace(action.workspace);
+      const selectedVar =
+        workspace.variants.find((v) => v.id === workspace.selectedVariantId) ??
+        workspace.variants[0];
+      const legacyProposal: ChangeProposal | null = selectedVar
+        ? {
+            id: workspace.id,
+            title: workspace.title,
+            description: workspace.description,
+            operations: cloneProposalOperations(selectedVar.operations),
+            baseRevision: workspace.baseRevision,
+            createdAt: workspace.createdAt
+          }
+        : null;
+
+      return {
+        ...state,
+        stateVersion: action.workspace.stateVersion ?? state.stateVersion + 1,
+        proposalWorkspace: workspace,
+        pendingProposal: legacyProposal,
+        proposalStatus: 'review',
+        proposalError: null
+      };
+    }
+
+    case 'WORKSPACE_CLOSED': {
+      return {
+        ...state,
+        workspaceEpoch: state.workspaceEpoch + 1,
+        proposalWorkspace: null,
+        pendingProposal: null,
+        proposalStatus: 'idle',
+        proposalError: null
+      };
+    }
+
+    case 'SET_INITIALIZING': {
+      return {
+        ...state,
+        isInitializing: action.isInitializing
+      };
+    }
+
+    case 'SET_MUTATING': {
+      return {
+        ...state,
+        isMutating: action.isMutating
+      };
+    }
+
+    case 'SET_NETWORK_ERROR': {
+      return {
+        ...state,
+        networkError: action.error,
+        isMutating: false,
+        isInitializing: false
+      };
+    }
+
+    case 'CLEAR_SESSION_EXPIRED_NOTICE': {
+      return {
+        ...state,
+        sessionExpiredNotice: false
+      };
+    }
+
+    case 'SET_CONFIG_ERROR': {
+      return {
+        ...state,
+        configError: action.error,
+        isInitializing: false
+      };
+    }
+
+    case 'SET_VALIDATION_ERROR': {
+      return {
+        ...state,
+        validationError: action.error
       };
     }
 

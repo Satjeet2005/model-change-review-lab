@@ -1,5 +1,6 @@
 import React, { ReactNode, useState } from 'react';
 import { useAppState, useAppDispatch } from '@/state/AppProvider';
+import { useAppCommands } from '@/api/useAppCommands';
 import { NavTabId } from '@/state/appState';
 import { Button } from '@/components/ui/Button';
 import { ResetDialog } from '@/components/history/ResetDialog';
@@ -22,15 +23,28 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export function AppShell({ children }: AppShellProps): React.JSX.Element {
-  const { activeTab, changeHistory } = useAppState();
+  const {
+    activeTab,
+    changeHistory,
+    canUndo,
+    isInitializing,
+    isMutating,
+    networkError,
+    configError,
+    sessionExpiredNotice
+  } = useAppState();
   const dispatch = useAppDispatch();
+  const commands = useAppCommands();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState<boolean>(false);
 
-  const canUndo = changeHistory.length > 0;
+  const isUndoAvailable =
+    (typeof canUndo === 'boolean' ? canUndo : changeHistory.length > 0) &&
+    !isMutating &&
+    !isInitializing;
 
   function handleUndo() {
-    if (!canUndo) return;
-    dispatch({ type: 'UNDO_LAST_TRANSACTION' });
+    if (!isUndoAvailable) return;
+    commands.undoLastTransaction().catch(() => {});
   }
 
   function handleOpenReset() {
@@ -42,7 +56,7 @@ export function AppShell({ children }: AppShellProps): React.JSX.Element {
   }
 
   function handleConfirmReset() {
-    dispatch({ type: 'RESET_TO_BASELINE' });
+    commands.resetToBaseline().catch(() => {});
     setIsResetDialogOpen(false);
   }
 
@@ -106,16 +120,17 @@ export function AppShell({ children }: AppShellProps): React.JSX.Element {
             <Button
               variant="outline"
               size="sm"
-              disabled={!canUndo}
+              disabled={!isUndoAvailable}
               onClick={handleUndo}
-              title={canUndo ? 'Undo latest transaction' : 'No transactions to undo'}
-              aria-disabled={!canUndo ? 'true' : undefined}
+              title={isUndoAvailable ? 'Undo latest transaction' : 'No transactions to undo'}
+              aria-disabled={!isUndoAvailable ? 'true' : undefined}
             >
               Undo
             </Button>
             <Button
               variant="outline"
               size="sm"
+              disabled={isMutating || isInitializing}
               onClick={handleOpenReset}
               title="Reset scenario to baseline seed model"
             >
@@ -124,6 +139,53 @@ export function AppShell({ children }: AppShellProps): React.JSX.Element {
           </div>
         </div>
       </header>
+
+      {/* Global Status & Error Banners */}
+      {configError && (
+        <div
+          role="alert"
+          className="bg-red-50 border-b border-red-200 px-4 py-2 text-sm text-red-800"
+        >
+          <strong>Configuration Error:</strong> {configError}
+        </div>
+      )}
+
+      {networkError && (
+        <div
+          role="alert"
+          className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-800 flex items-center justify-between gap-4"
+        >
+          <span>
+            <strong>Connection Warning:</strong> {networkError}
+          </span>
+          <button
+            type="button"
+            onClick={() => commands.retryInit()}
+            className="shrink-0 px-2.5 py-1 text-xs font-semibold bg-amber-600 text-white rounded hover:bg-amber-700 cursor-pointer"
+          >
+            Retry Connection
+          </button>
+        </div>
+      )}
+
+      {sessionExpiredNotice && (
+        <div
+          role="status"
+          className="bg-blue-50 border-b border-blue-200 px-4 py-2 text-sm text-blue-900 flex items-center justify-between gap-4"
+        >
+          <span>
+            Your anonymous demo data expired after 30 days of inactivity and a clean workspace
+            session was created.
+          </span>
+          <button
+            type="button"
+            onClick={() => dispatch({ type: 'CLEAR_SESSION_EXPIRED_NOTICE' })}
+            className="shrink-0 text-xs font-semibold text-blue-700 hover:text-blue-900 underline cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Reset Confirmation Dialog */}
       <ResetDialog
@@ -134,7 +196,20 @@ export function AppShell({ children }: AppShellProps): React.JSX.Element {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {children}
+        {isInitializing ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex flex-col items-center justify-center p-12 text-center text-neutral-600"
+          >
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3" />
+            <p className="text-sm font-medium">
+              Connecting to Model Change Review Lab workspace...
+            </p>
+          </div>
+        ) : (
+          children
+        )}
       </main>
 
       {/* Footer Landmark */}

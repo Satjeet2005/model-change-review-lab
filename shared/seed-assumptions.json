@@ -1,0 +1,198 @@
+{
+  "startingRevenueUsd": 750000,
+  "startingCashUsd": 3000000,
+  "months": [
+    {
+      "period": 1,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 12,
+      "otherFte": 18,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 2,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 12,
+      "otherFte": 18,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 3,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 12,
+      "otherFte": 18,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 4,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 12,
+      "otherFte": 18,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 5,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 12,
+      "otherFte": 18,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 6,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 12,
+      "otherFte": 18,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 7,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 14,
+      "otherFte": 20,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 8,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 14,
+      "otherFte": 20,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 9,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 14,
+      "otherFte": 20,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 10,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 14,
+      "otherFte": 20,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 11,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 14,
+      "otherFte": 20,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 12,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 14,
+      "otherFte": 20,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 13,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 16,
+      "otherFte": 22,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 14,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 16,
+      "otherFte": 22,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 15,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 16,
+      "otherFte": 22,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 16,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 16,
+      "otherFte": 22,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 17,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 16,
+      "otherFte": 22,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 18,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 16,
+      "otherFte": 22,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 19,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 18,
+      "otherFte": 24,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 20,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 18,
+      "otherFte": 24,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 21,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 18,
+      "otherFte": 24,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 22,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 18,
+      "otherFte": 24,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 23,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 18,
+      "otherFte": 24,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    },
+    {
+      "period": 24,
+      "revenueGrowthRate": 0.025,
+      "engineeringFte": 18,
+      "otherFte": 24,
+      "loadedMonthlyCostPerFteUsd": 12000,
+      "otherOperatingExpenseUsd": 240000
+    }
+  ]
+}

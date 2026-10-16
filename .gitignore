@@ -36,3 +36,21 @@ scratch/
 test-results/
 playwright-report/
 *.tsbuildinfo
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+*/.venv/
+venv/
+env/
+.pytest_cache/
+*/.pytest_cache/
+.ruff_cache/
+*/.ruff_cache/
+*.egg-info/
+dist/
+build/

@@ -141,6 +141,9 @@ export interface ProposalWorkspace {
   readonly selectedVariantId: string;
   readonly comparisonVariantIds: readonly [string, string?];
   readonly createdAt: string;
+  readonly status?: 'active' | 'accepted' | 'rejected' | 'archived' | 'dismissed';
+  readonly isStale?: boolean;
+  readonly stateVersion?: number;
 }
 
 export interface ChangeProposal {
@@ -152,7 +155,7 @@ export interface ChangeProposal {
   createdAt: string;
 }
 
-export type TransactionKind = 'manual-edit' | 'proposal-accepted';
+export type TransactionKind = 'manual-edit' | 'proposal-accepted' | 'reset-to-baseline' | 'undo';
 
 export interface TransactionProvenance {
   readonly proposalWorkspaceId: string;
@@ -172,6 +175,8 @@ export interface TransactionRecord {
   newAssumptions: ModelAssumptions;
   resultingRevision: number;
   provenance?: TransactionProvenance;
+  undoesTransactionId?: string | null;
+  undoneByTransactionId?: string | null;
 }
 
 export interface ValidationError {

@@ -3,6 +3,7 @@ import { createInitialState, AppState } from '../appState';
 import { appReducer, getNextVariantLabel, AppAction } from '../appReducer';
 import { ChangeProposal, ProposalVariant, ProposalWorkspace } from '@/domain/types';
 import { cloneModelAssumptions } from '@/domain/operations';
+import { SessionSnapshot } from '@/api/types';
 
 function startAndSucceedProposal(
   state: AppState,
@@ -983,6 +984,432 @@ describe('Application Reducer & State Management (T-029)', () => {
       expect(lateErrorB).toBe(matchedCancel);
       expect(lateErrorB.proposalError).toBeNull();
       expect(lateErrorB.proposalStatus).toBe('idle');
+    });
+
+    it('guards SERVER_SNAPSHOT_APPLIED against stale revisions and stateVersions while accepting session resets', () => {
+      const state0 = createInitialState();
+      const mockSnapshot1: SessionSnapshot = {
+        sessionId: 'session-123',
+        stateVersion: 5,
+        revision: 2,
+        baselineAssumptions: state0.baselineAssumptions,
+        workingAssumptions: state0.workingAssumptions,
+        activeWorkspace: null,
+        archivedWorkspaces: [],
+        changeHistory: [],
+        canUndo: true
+      };
+
+      // 1. Initial snapshot applies successfully and sets sessionId, revision, and stateVersion
+      const state1 = appReducer(state0, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: mockSnapshot1
+      });
+      expect(state1.sessionId).toBe('session-123');
+      expect(state1.revision).toBe(2);
+      expect(state1.stateVersion).toBe(5);
+
+      // 2. Stale snapshot for the same session (revision 1 < 2) is rejected by ordering guard
+      const staleSnapshot: SessionSnapshot = {
+        ...mockSnapshot1,
+        revision: 1
+      };
+      const state2 = appReducer(state1, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: staleSnapshot
+      });
+      expect(state2.revision).toBe(2);
+      expect(state2.stateVersion).toBe(5);
+      expect(state2.sessionId).toBe('session-123');
+
+      // 3. Stale snapshot for the same session with SAME revision (2 == 2) but lower stateVersion (4 < 5) is rejected
+      const staleVersionSnapshot: SessionSnapshot = {
+        ...mockSnapshot1,
+        revision: 2,
+        stateVersion: 4
+      };
+      const state2b = appReducer(state1, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: staleVersionSnapshot
+      });
+      expect(state2b.revision).toBe(2);
+      expect(state2b.stateVersion).toBe(5);
+      expect(state2b.sessionId).toBe('session-123');
+
+      // 4. Newer snapshot for same session with same revision (2 == 2) but higher stateVersion (6 > 5) is accepted
+      const newerVersionSnapshot: SessionSnapshot = {
+        ...mockSnapshot1,
+        revision: 2,
+        stateVersion: 6
+      };
+      const state2c = appReducer(state1, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: newerVersionSnapshot
+      });
+      expect(state2c.revision).toBe(2);
+      expect(state2c.stateVersion).toBe(6);
+
+      // 5. Newer snapshot for same session (revision 3 > 2) is accepted
+      const newerSnapshot: SessionSnapshot = {
+        ...mockSnapshot1,
+        revision: 3,
+        stateVersion: 7
+      };
+      const state3 = appReducer(state2c, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: newerSnapshot
+      });
+      expect(state3.revision).toBe(3);
+      expect(state3.stateVersion).toBe(7);
+
+      // 6. Legitimate session reset (different sessionId) with revision 1 and stateVersion 1 is accepted
+      const resetSnapshot: SessionSnapshot = {
+        ...mockSnapshot1,
+        sessionId: 'session-456-reset',
+        revision: 1,
+        stateVersion: 1,
+        sessionResetBecauseExpired: true
+      };
+      const state4 = appReducer(state3, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: resetSnapshot
+      });
+      expect(state4.sessionId).toBe('session-456-reset');
+      expect(state4.revision).toBe(1);
+      expect(state4.stateVersion).toBe(1);
+      expect(state4.sessionExpiredNotice).toBe(true);
+    });
+
+    it('synchronizes global stateVersion across proposal lifecycle and protects against delayed/equal-version snapshots (Round 5 P1)', () => {
+      const state0 = createInitialState();
+      const mockSnapshot1: SessionSnapshot = {
+        sessionId: 'session-order-test',
+        stateVersion: 1,
+        revision: 1,
+        baselineAssumptions: state0.baselineAssumptions,
+        workingAssumptions: state0.workingAssumptions,
+        activeWorkspace: null,
+        archivedWorkspaces: [],
+        changeHistory: [],
+        canUndo: false
+      };
+
+      // 1. Establish session at stateVersion 1
+      const sessionState = appReducer(state0, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: mockSnapshot1
+      });
+      expect(sessionState.stateVersion).toBe(1);
+
+      // 2. Proposal generation updates global stateVersion from workspace
+      const startState = appReducer(sessionState, {
+        type: 'PROPOSAL_GENERATE_START',
+        requestId: 'req-gen-1'
+      });
+      expect(startState.proposalStatus).toBe('generating');
+
+      // Delayed equal-version snapshot arrives while generation is in flight -> rejected, generation preserved
+      const delayedDuringGen = appReducer(startState, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: mockSnapshot1
+      });
+      expect(delayedDuringGen.proposalStatus).toBe('generating');
+      expect(delayedDuringGen.activeGenerationRequestId).toBe('req-gen-1');
+
+      const mockWs: ProposalWorkspace = {
+        id: 'ws-gen-1',
+        title: 'Hiring plan',
+        description: 'Test',
+        sourceTemplateId: 'hire-engineers-from-q3',
+        baseRevision: 1,
+        stateVersion: 2,
+        baseAssumptions: sessionState.workingAssumptions,
+        selectedVariantId: 'var-1',
+        comparisonVariantIds: ['var-1'],
+        createdAt: '2026-01-01T00:00:00Z',
+        variants: [
+          {
+            id: 'var-1',
+            label: 'Original proposal',
+            sourceTemplateId: 'hire-engineers-from-q3',
+            operations: [],
+            resetSnapshotOperations: [],
+            createdAt: '2026-01-01T00:00:00Z'
+          }
+        ]
+      };
+
+      const generatedState = appReducer(startState, {
+        type: 'PROPOSAL_GENERATE_SUCCESS',
+        requestId: 'req-gen-1',
+        workspace: mockWs
+      });
+      expect(generatedState.stateVersion).toBe(2);
+      expect(generatedState.proposalStatus).toBe('review');
+      expect(generatedState.proposalWorkspace).not.toBeNull();
+
+      // Delayed lower-version snapshot (stateVersion 1 < 2) is rejected
+      const delayedLowerSnap = appReducer(generatedState, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: mockSnapshot1
+      });
+      expect(delayedLowerSnap.proposalWorkspace).not.toBeNull();
+      expect(delayedLowerSnap.stateVersion).toBe(2);
+
+      // Delayed equal-version snapshot (stateVersion 2 == 2) without active workspace is rejected
+      const equalVersionNoWs: SessionSnapshot = {
+        ...mockSnapshot1,
+        stateVersion: 2,
+        activeWorkspace: null
+      };
+      const delayedEqualAfterGen = appReducer(generatedState, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: equalVersionNoWs
+      });
+      expect(delayedEqualAfterGen.proposalWorkspace).not.toBeNull();
+      expect(delayedEqualAfterGen.proposalStatus).toBe('review');
+
+      // 3. Rejection advances stateVersion and clears workspace
+      const rejectedState = appReducer(generatedState, {
+        type: 'PROPOSAL_REJECT',
+        stateVersion: 3
+      });
+      expect(rejectedState.stateVersion).toBe(3);
+      expect(rejectedState.proposalStatus).toBe('rejected');
+      expect(rejectedState.proposalWorkspace).toBeNull();
+
+      // Delayed lower-version snapshot (stateVersion 2 < 3) is rejected
+      const delayedLowerAfterReject = appReducer(rejectedState, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: {
+          ...mockSnapshot1,
+          stateVersion: 2,
+          activeWorkspace: mockWs
+        }
+      });
+      expect(delayedLowerAfterReject.proposalStatus).toBe('rejected');
+      expect(delayedLowerAfterReject.proposalWorkspace).toBeNull();
+
+      // Delayed equal-version snapshot (stateVersion 3 == 3) containing active workspace is rejected
+      const delayedEqualWithWs: SessionSnapshot = {
+        ...mockSnapshot1,
+        stateVersion: 3,
+        activeWorkspace: mockWs
+      };
+      const delayedEqualAfterReject = appReducer(rejectedState, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: delayedEqualWithWs
+      });
+      expect(delayedEqualAfterReject.proposalStatus).toBe('rejected');
+      expect(delayedEqualAfterReject.proposalWorkspace).toBeNull();
+
+      // 4. Dismissal advances stateVersion and resets status to idle
+      const dismissedState = appReducer(generatedState, {
+        type: 'PROPOSAL_DISMISS',
+        stateVersion: 4
+      });
+      expect(dismissedState.stateVersion).toBe(4);
+      expect(dismissedState.proposalStatus).toBe('idle');
+      expect(dismissedState.proposalWorkspace).toBeNull();
+
+      // Delayed equal-version snapshot (stateVersion 4 == 4) containing active workspace is rejected
+      const delayedEqualAfterDismiss = appReducer(dismissedState, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: {
+          ...mockSnapshot1,
+          stateVersion: 4,
+          activeWorkspace: mockWs
+        }
+      });
+      expect(delayedEqualAfterDismiss.proposalStatus).toBe('idle');
+      expect(delayedEqualAfterDismiss.proposalWorkspace).toBeNull();
+    });
+
+    it('UI-only acknowledgement dismissal preserves server-authoritative stateVersion', () => {
+      const stateWithVer = {
+        ...createInitialState(),
+        stateVersion: 5,
+        proposalStatus: 'error' as const,
+        proposalError: 'Network error'
+      };
+
+      // Dismissal without stateVersion (UI acknowledgment) keeps stateVersion unchanged
+      const dismissed = appReducer(stateWithVer, { type: 'PROPOSAL_DISMISS' });
+      expect(dismissed.stateVersion).toBe(5);
+      expect(dismissed.proposalStatus).toBe('idle');
+      expect(dismissed.proposalError).toBeNull();
+    });
+  });
+
+  describe('Workspace Epoch Invalidation and WORKSPACE_UPDATED Guards (P1)', () => {
+    const createMockWorkspace = (): ProposalWorkspace => {
+      const state = createInitialState();
+      const variant: ProposalVariant = {
+        id: 'var-1',
+        label: 'Original proposal',
+        sourceTemplateId: 'hire-engineers-from-q3',
+        operations: [],
+        resetSnapshotOperations: [],
+        createdAt: '2026-01-01T00:00:00Z'
+      };
+      return {
+        id: 'ws-1',
+        sourceTemplateId: 'hire-engineers-from-q3',
+        title: 'Hire 2 Engineers from Q3',
+        description: 'Test workspace',
+        baseRevision: 1,
+        baseAssumptions: cloneModelAssumptions(state.workingAssumptions),
+        status: 'active',
+        variants: [variant],
+        selectedVariantId: 'var-1',
+        comparisonVariantIds: ['var-1'],
+        createdAt: '2026-01-01T00:00:00Z'
+      };
+    };
+
+    it('WORKSPACE_UPDATED drops action if proposalWorkspace is null', () => {
+      const state0 = createInitialState();
+      expect(state0.proposalWorkspace).toBeNull();
+
+      const ws = createMockWorkspace();
+      const nextState = appReducer(state0, {
+        type: 'WORKSPACE_UPDATED',
+        workspace: ws
+      });
+
+      expect(nextState.proposalWorkspace).toBeNull();
+      expect(nextState).toBe(state0);
+    });
+
+    it('WORKSPACE_UPDATED drops action if epoch does not match state.workspaceEpoch', () => {
+      const state0 = createInitialState();
+      const ws = createMockWorkspace();
+      const activeState = startAndSucceedProposal(state0, { workspace: ws });
+      const currentEpoch = activeState.workspaceEpoch;
+
+      const updatedWs: ProposalWorkspace = {
+        ...ws,
+        selectedVariantId: 'var-updated'
+      };
+
+      // Dispatched with stale epoch
+      const staleState = appReducer(activeState, {
+        type: 'WORKSPACE_UPDATED',
+        workspace: updatedWs,
+        epoch: currentEpoch + 1
+      });
+
+      expect(staleState.proposalWorkspace?.selectedVariantId).toBe('var-1');
+      expect(staleState).toBe(activeState);
+    });
+
+    it('WORKSPACE_UPDATED drops action if sessionId does not match state.sessionId', () => {
+      const state0: AppState = {
+        ...createInitialState(),
+        sessionId: 'session-curr'
+      };
+      const ws = createMockWorkspace();
+      const activeState = startAndSucceedProposal(state0, { workspace: ws });
+
+      const updatedWs: ProposalWorkspace = {
+        ...ws,
+        selectedVariantId: 'var-updated'
+      };
+
+      const staleState = appReducer(activeState, {
+        type: 'WORKSPACE_UPDATED',
+        workspace: updatedWs,
+        sessionId: 'session-other'
+      });
+
+      expect(staleState.proposalWorkspace?.selectedVariantId).toBe('var-1');
+      expect(staleState).toBe(activeState);
+    });
+
+    it('WORKSPACE_UPDATED applies changes when workspace is active, epoch matches, and sessionId matches', () => {
+      const state0: AppState = {
+        ...createInitialState(),
+        sessionId: 'session-curr'
+      };
+      const ws = createMockWorkspace();
+      const activeState = startAndSucceedProposal(state0, { workspace: ws });
+
+      const updatedWs: ProposalWorkspace = {
+        ...ws,
+        selectedVariantId: 'var-1',
+        title: 'Updated Title'
+      };
+
+      const nextState = appReducer(activeState, {
+        type: 'WORKSPACE_UPDATED',
+        workspace: updatedWs,
+        sessionId: 'session-curr',
+        epoch: activeState.workspaceEpoch
+      });
+
+      expect(nextState.proposalWorkspace?.title).toBe('Updated Title');
+    });
+
+    it('increments workspaceEpoch on workspace-closing and generating transitions', () => {
+      const state0 = createInitialState();
+      const epoch0 = state0.workspaceEpoch;
+
+      // 1. PROPOSAL_GENERATE_START increments epoch
+      const generating = appReducer(state0, {
+        type: 'PROPOSAL_GENERATE_START',
+        requestId: 'req-1'
+      });
+      expect(generating.workspaceEpoch).toBe(epoch0 + 1);
+
+      // 2. PROPOSAL_REJECT increments epoch
+      const ws = createMockWorkspace();
+      const withWs = startAndSucceedProposal(state0, { workspace: ws });
+      const epochBeforeReject = withWs.workspaceEpoch;
+      const rejected = appReducer(withWs, { type: 'PROPOSAL_REJECT' });
+      expect(rejected.workspaceEpoch).toBe(epochBeforeReject + 1);
+
+      // 3. PROPOSAL_DISMISS increments epoch
+      const epochBeforeDismiss = withWs.workspaceEpoch;
+      const dismissed = appReducer(withWs, { type: 'PROPOSAL_DISMISS' });
+      expect(dismissed.workspaceEpoch).toBe(epochBeforeDismiss + 1);
+
+      // 4. RESET_TO_BASELINE increments epoch
+      const epochBeforeReset = withWs.workspaceEpoch;
+      const reset = appReducer(withWs, { type: 'RESET_TO_BASELINE' });
+      expect(reset.workspaceEpoch).toBe(epochBeforeReset + 1);
+
+      // 5. WORKSPACE_CLOSED increments epoch
+      const epochBeforeClosed = withWs.workspaceEpoch;
+      const closed = appReducer(withWs, { type: 'WORKSPACE_CLOSED' });
+      expect(closed.workspaceEpoch).toBe(epochBeforeClosed + 1);
+
+      // 6. WORKSPACE_ARCHIVE_STALE increments epoch
+      const epochBeforeArchive = withWs.workspaceEpoch;
+      const archived = appReducer(withWs, { type: 'WORKSPACE_ARCHIVE_STALE' });
+      expect(archived.workspaceEpoch).toBe(epochBeforeArchive + 1);
+
+      // 7. WORKSPACE_DISMISS_STALE increments epoch
+      const epochBeforeDismissStale = withWs.workspaceEpoch;
+      const dismissedStale = appReducer(withWs, { type: 'WORKSPACE_DISMISS_STALE' });
+      expect(dismissedStale.workspaceEpoch).toBe(epochBeforeDismissStale + 1);
+
+      // 8. SERVER_SNAPSHOT_APPLIED increments epoch
+      const epochBeforeSnapshot = withWs.workspaceEpoch;
+      const snapshotted = appReducer(withWs, {
+        type: 'SERVER_SNAPSHOT_APPLIED',
+        snapshot: {
+          sessionId: 'session-new',
+          stateVersion: 2,
+          revision: 2,
+          baselineAssumptions: cloneModelAssumptions(state0.workingAssumptions),
+          workingAssumptions: cloneModelAssumptions(state0.workingAssumptions),
+          activeWorkspace: null,
+          archivedWorkspaces: [],
+          changeHistory: [],
+          canUndo: false
+        }
+      });
+      expect(snapshotted.workspaceEpoch).toBe(epochBeforeSnapshot + 1);
     });
   });
 });

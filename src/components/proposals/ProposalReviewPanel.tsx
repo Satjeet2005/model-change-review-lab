@@ -1,24 +1,23 @@
 import React, { useMemo, useState, useRef } from 'react';
 import { useAppState, useAppDispatch } from '@/state/AppProvider';
-import { getNextVariantLabel } from '@/state/appReducer';
 import {
   CalculatedRowKey,
   CellId,
   ProposalOperation,
   ProposalTemplateId,
-  ProposalVariant,
-  ProposalWorkspace
+  ProposalVariant
 } from '@/domain/types';
 import {
   validateProposalAcceptance,
   validateVariantOperationsForPreview
 } from '@/domain/validation';
 import { MockProposalProvider } from '@/domain/proposals';
-import { cloneModelAssumptions, cloneProposalOperations } from '@/domain/operations';
+import { cloneModelAssumptions } from '@/domain/operations';
 import { calculateProposalVariantComparison } from '@/domain/proposalComparison';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { InlineNotice } from '@/components/app/InlineNotice';
+import { useAppCommands } from '@/api/useAppCommands';
 import { ProposalDiff } from './ProposalDiff';
 import { ProposalPreviewKPIs } from './ProposalPreviewKPIs';
 import { ProposalImpactChart } from './ProposalImpactChart';
@@ -29,7 +28,7 @@ export interface ProposalReviewPanelProps {
 }
 
 export function ProposalReviewPanel({
-  proposalProvider = new MockProposalProvider()
+  proposalProvider: _proposalProvider = new MockProposalProvider()
 }: ProposalReviewPanelProps): React.JSX.Element | null {
   const {
     proposalWorkspace,
@@ -38,9 +37,11 @@ export function ProposalReviewPanel({
     proposalStatus,
     proposalError,
     revision,
-    workingAssumptions
+    workingAssumptions,
+    isMutating
   } = useAppState();
   const dispatch = useAppDispatch();
+  const commands = useAppCommands();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedImpactMetric, setSelectedImpactMetric] = useState<CalculatedRowKey>('revenue');
   const [previewTab, setPreviewTab] = useState<'summary' | 'chart' | 'table'>('summary');
@@ -162,6 +163,9 @@ export function ProposalReviewPanel({
     proposalStatus !== 'generating';
 
   function handleSelectVariant(variantId: string) {
+    if (activeWorkspace) {
+      commands.updateSelection(variantId, activeWorkspace.comparisonVariantIds).catch(() => {});
+    }
     dispatch({ type: 'WORKSPACE_SELECT_VARIANT', variantId });
   }
 
@@ -185,21 +189,13 @@ export function ProposalReviewPanel({
   }
 
   function handleDuplicateVariant() {
-    if (!selectedVariant || isStale || !activeWorkspace) return;
-    const newLabel = getNextVariantLabel(activeWorkspace.variants);
-    const newVariantId = `var-${selectedVariant.id}-dup-${Date.now()}`;
-    const createdAt = new Date().toISOString();
-    dispatch({
-      type: 'WORKSPACE_DUPLICATE_VARIANT',
-      sourceVariantId: selectedVariant.id,
-      newVariantId,
-      newLabel,
-      createdAt
-    });
+    if (!selectedVariant || isStale || !activeWorkspace || isMutating) return;
+    commands.duplicateVariant(selectedVariant.id).catch(() => {});
   }
 
   function handleRemoveVariant(variantId: string) {
-    dispatch({ type: 'WORKSPACE_REMOVE_VARIANT', variantId });
+    if (isMutating) return;
+    commands.removeVariant(variantId).catch(() => {});
     if (activeWorkspace) {
       const remaining = activeWorkspace.variants.find((v) => v.id !== variantId);
       if (remaining) {
@@ -209,101 +205,42 @@ export function ProposalReviewPanel({
   }
 
   function handleResetEdits() {
-    if (!selectedVariant || isStale) return;
-    dispatch({
-      type: 'WORKSPACE_RESET_VARIANT_EDITS',
-      variantId: selectedVariant.id
-    });
+    if (!selectedVariant || isStale || isMutating) return;
+    commands.resetVariant(selectedVariant.id).catch(() => {});
   }
 
   function handleAccept() {
-    if (!canAccept) return;
-    dispatch({ type: 'PROPOSAL_ACCEPT' });
+    if (!canAccept || !selectedVariant || isMutating) return;
+    commands.acceptProposal(selectedVariant.id).catch(() => {});
   }
 
   function handleReject() {
-    dispatch({ type: 'PROPOSAL_REJECT' });
+    if (isMutating) return;
+    commands.rejectProposal().catch(() => {});
   }
 
   function handleDismiss() {
-    dispatch({ type: 'PROPOSAL_DISMISS' });
+    if (isMutating) return;
+    commands.dismissProposal().catch(() => {});
   }
 
   function handleEditOperation(targetCellId: CellId, proposedValue: number) {
-    if (selectedVariant) {
-      dispatch({
-        type: 'WORKSPACE_EDIT_OPERATION',
-        variantId: selectedVariant.id,
-        targetCellId,
-        proposedValue
-      });
-    } else {
-      dispatch({ type: 'PROPOSAL_EDIT_OPERATION', targetCellId, proposedValue });
+    if (selectedVariant && !isMutating) {
+      commands
+        .editVariantOperation(selectedVariant.id, targetCellId, proposedValue)
+        .catch(() => {});
     }
   }
 
   async function handleCreateFreshVersion() {
-    if (isRefreshing || !activeWorkspace) return;
+    if (isRefreshing || !activeWorkspace || isMutating) return;
     setIsRefreshing(true);
     const templateId = activeWorkspace.sourceTemplateId;
 
-    // 1. Archive current stale workspace
-    dispatch({ type: 'WORKSPACE_ARCHIVE_STALE' });
-
-    // 2. Dispatch correlated fresh request
-    const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const requestRevision = revision;
-    const requestAssumptions = cloneModelAssumptions(workingAssumptions);
-
-    dispatch({
-      type: 'PROPOSAL_GENERATE_START',
-      requestId,
-      requestRevision,
-      requestAssumptions
-    });
-
     try {
-      const generated = await proposalProvider.generateProposal(
-        templateId,
-        requestAssumptions,
-        requestRevision
-      );
-
-      const variantId = `var-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      const ops = cloneProposalOperations(generated.operations);
-      const variant: ProposalVariant = {
-        id: variantId,
-        label: 'Original proposal',
-        sourceTemplateId: templateId,
-        operations: ops,
-        resetSnapshotOperations: cloneProposalOperations(ops),
-        createdAt: new Date().toISOString()
-      };
-
-      const freshWorkspace: ProposalWorkspace = {
-        id: `ws-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        baseRevision: requestRevision,
-        baseAssumptions: requestAssumptions,
-        sourceTemplateId: templateId,
-        title: generated.title,
-        description: generated.description,
-        variants: [variant],
-        selectedVariantId: variant.id,
-        comparisonVariantIds: [variant.id],
-        createdAt: new Date().toISOString()
-      };
-
-      dispatch({
-        type: 'PROPOSAL_GENERATE_SUCCESS',
-        requestId,
-        workspace: freshWorkspace
-      });
-    } catch (err) {
-      dispatch({
-        type: 'PROPOSAL_GENERATE_ERROR',
-        requestId,
-        error: err instanceof Error ? err.message : 'Fresh proposal generation failed'
-      });
+      await commands.createFreshVersion(templateId);
+    } catch {
+      // errors handled by commands
     } finally {
       setIsRefreshing(false);
     }

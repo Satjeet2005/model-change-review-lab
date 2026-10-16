@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useAppState, useAppDispatch } from '@/state/AppProvider';
-import { formatCurrency } from '@/domain/formatting';
+import { useAppCommands } from '@/api/useAppCommands';
+import { formatCurrency, parseEditableValue } from '@/domain/formatting';
 import { Button } from '@/components/ui/Button';
 
 export function ModelSettings(): React.JSX.Element {
   const { workingAssumptions, baselineAssumptions, editingCell, validationError } = useAppState();
   const dispatch = useAppDispatch();
+  const commands = useAppCommands();
 
   const [revInput, setRevInput] = useState<string>(String(workingAssumptions.startingRevenueUsd));
   const [cashInput, setCashInput] = useState<string>(String(workingAssumptions.startingCashUsd));
@@ -25,12 +27,20 @@ export function ModelSettings(): React.JSX.Element {
     });
   }
 
-  function handleCommitRev() {
-    dispatch({
-      type: 'DIRECT_EDIT_COMMIT',
-      cellId: 'setting:startingRevenueUsd',
-      rawValue: revInput
-    });
+  async function handleCommitRev() {
+    const val = parseEditableValue(revInput, false);
+    if (Number.isNaN(val)) {
+      dispatch({
+        type: 'DIRECT_EDIT_COMMIT',
+        cellId: 'setting:startingRevenueUsd',
+        rawValue: revInput
+      });
+      return;
+    }
+    const success = await commands.directEdit('setting:startingRevenueUsd', val);
+    if (success) {
+      dispatch({ type: 'DIRECT_EDIT_CANCEL' });
+    }
   }
 
   function handleStartCash() {
@@ -42,12 +52,20 @@ export function ModelSettings(): React.JSX.Element {
     });
   }
 
-  function handleCommitCash() {
-    dispatch({
-      type: 'DIRECT_EDIT_COMMIT',
-      cellId: 'setting:startingCashUsd',
-      rawValue: cashInput
-    });
+  async function handleCommitCash() {
+    const val = parseEditableValue(cashInput, false);
+    if (Number.isNaN(val)) {
+      dispatch({
+        type: 'DIRECT_EDIT_COMMIT',
+        cellId: 'setting:startingCashUsd',
+        rawValue: cashInput
+      });
+      return;
+    }
+    const success = await commands.directEdit('setting:startingCashUsd', val);
+    if (success) {
+      dispatch({ type: 'DIRECT_EDIT_CANCEL' });
+    }
   }
 
   function handleCancel() {

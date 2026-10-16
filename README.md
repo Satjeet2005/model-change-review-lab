@@ -26,12 +26,23 @@ The application follows a unidirectional data flow separating pure domain logic 
 
 ### System Architecture Flow
 
+The system uses a full-stack architecture with a strict boundary between persistence and financial mathematics:
+
+- **Browser Client (React 19 + TypeScript):** Owns the single and authoritative financial calculation engine (`calculateModel`), Trace DAG indexer (`buildTraceIndex`), scenario variance comparator, and virtualization lab. Financial formulas are never duplicated on the server.
+- **Backend API (FastAPI + Python 3.12):** Authoritatively validates assumption inputs, enforces row-level locking (`SELECT ... FOR UPDATE`), serializes monotonic revision updates, persists proposal workspaces/variants, and logs transaction history.
+- **Database (PostgreSQL 16):** Stores hashed capability tokens (`X-Workspace-Token`), session assumptions, active/archived workspaces, and audit transactions with foreign keys and partial unique indexes.
+
+See [`docs/implementation/FULL_STACK_BACKEND_ARCHITECTURE.md`](docs/implementation/FULL_STACK_BACKEND_ARCHITECTURE.md) for full architectural specifications, schema definitions, and concurrency controls.
+
 ```mermaid
 flowchart TD
     UserAction["User Action / Interaction"] --> Dispatch["Action Dispatcher"]
     Dispatch --> Reducer["App Reducer (useReducer)"]
+    Dispatch --> ApiCommands["API Commands (useAppCommands)"]
+    ApiCommands --> FastAPI["FastAPI Backend (/api/v1)"]
+    FastAPI --> Postgres[("PostgreSQL 16 Database")]
 
-    subgraph DomainLayer["Pure Domain Layer (Zero React Imports)"]
+    subgraph DomainLayer["Client Domain Engine (Single Source of Financial Math)"]
         Validation["Validation Engine (src/domain/validation.ts)"]
         Calculation["Canonical Engine (src/domain/calculation.ts)"]
         TraceDAG["Trace DAG Indexer (src/domain/trace.ts)"]
@@ -39,26 +50,24 @@ flowchart TD
         Comparison["Scenario Variance (src/domain/scenarioComparison.ts)"]
     end
 
-    Reducer --> Validation
-    Validation --> Transactions
-    Transactions --> Calculation
+    FastAPI -.->|"Session Snapshot (Assumptions & Rev)"| Reducer
+    Reducer --> Calculation
     Calculation --> TraceDAG
     Calculation --> Comparison
 
     subgraph StateTree["Canonical State (src/state/appState.ts)"]
         BaselineModel["Immutable Baseline Model"]
-        WorkingModel["Active Working Model (Revision Token)"]
+        WorkingModel["Active Working Model (Authoritative Server Revision)"]
         ChangeHistory["Committed Transaction History Stack"]
-        UndoSnapshot["Transaction History Stack (Single-Step Undo)"]
-        ProposalState["Isolated Proposal Workspace State"]
+        ProposalState["Isolated Proposal Workspace State (Variants)"]
     end
 
-    Transactions --> StateTree
+    Calculation --> StateTree
     StateTree --> UIViews["React UI Shell & Pages"]
 
     subgraph UIViews["User Interface Views"]
         ModelGrid["Model Planning Grid (24 Periods)"]
-        ProposalReview["Proposal Review Panel & Diff"]
+        ProposalReview["Proposal Review Panel & Diff (Up to 3 Variants)"]
         TracePanel["Dependency Trace Panel"]
         HistoryPanel["Change History & Undo"]
         ScenarioPage["Scenario Compare (Chart & Variance Table)"]
@@ -125,43 +134,83 @@ All manual cell edits and proposed operations are validated prior to commit:
 
 ### Prerequisites
 
-- **Node.js:** v22.x LTS (primary CI and local development; Netlify runs Node 20.x LTS)
-- **Package Manager:** `npm` (with committed `package-lock.json`)
+- **Node.js:** v22.x LTS (primary CI and local development)
+- **Python:** v3.12.x and `uv` package manager
+- **Docker & Docker Compose:** for PostgreSQL 16 container
 
-### Command Reference
+### 1. Database Setup (PostgreSQL 16)
 
 ```bash
-# 1. Install all dependencies reproducibly
+# Start PostgreSQL 16 container (bound securely to 127.0.0.1:5432)
+docker compose up -d
+
+# Verify database health
+docker compose ps
+```
+
+### 2. Backend Setup & Verification (FastAPI + SQLAlchemy 2.x)
+
+```bash
+cd backend
+
+# Install locked Python dependencies
+uv sync --locked
+
+# Apply Alembic database migrations
+uv run alembic upgrade head
+
+# Run linter and formatting checks
+uv run ruff check app tests
+uv run ruff format --check app tests
+
+# Run backend pytest test suite against isolated test database (39 tests)
+# Note: pytest requires TEST_DATABASE_URL (defaults to mcrl_test) and fails closed
+# if pointed at the application database (mcrl) to prevent accidental truncation.
+uv run pytest
+
+cd ..
+```
+
+### 3. Frontend Setup & Verification (React 19 + TypeScript)
+
+```bash
+# Install frontend dependencies
 npm ci
 
-# 2. Start local Vite development server
-npm run dev
-
-# 3. Typecheck codebase with strict TypeScript
+# Typecheck codebase with strict TypeScript
 npm run typecheck
 
-# 4. Run ESLint source analysis
+# Run ESLint source analysis
 npm run lint
 
-# 5. Verify Prettier code formatting
+# Verify Prettier code formatting
 npm run format
 
-# 6. Execute full Vitest unit & integration test suite (20 test suites, 114 tests)
+# Run full Vitest unit & component test suite (24 suites, 196 tests)
 npm test -- --run
 
-# 7. Compile optimized production build
-npm run build
+# Compile production bundle with backend API target
+VITE_API_BASE_URL=http://127.0.0.1:8000 npm run build
+```
 
-# 8. Serve production build locally
-npx vite preview --port 4173
+### 4. End-to-End & Automated Accessibility Testing (Playwright)
 
-# 9. Run Playwright End-to-End & automated Axe-core accessibility tests
+```bash
+# Run Playwright E2E integration and Axe WCAG 2.2 AA accessibility tests (10 tests)
+# (Orchestrates FastAPI backend and Vite preview automatically)
 npm run test:e2e
 ```
 
+### 5. Production Deployment (Microsoft Azure Linux VM + Coolify, Docker Compose)
+
+Model Change Review Lab provides a dedicated containerized production setup:
+
+- **Azure & Coolify Deployment:** Refer to the comprehensive deployment guide in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for Ubuntu 24.04 LTS Azure VM provisioning, Network Security Group (NSG) configurations, self-hosted Coolify setup, environment variable matrices, and backup procedures.
+- **Docker Compose Production:** `docker compose -f compose.prod.yaml up -d --build` builds the backend container, isolates PostgreSQL inside an internal Docker network (no public port exposure), and auto-applies Alembic migrations on startup.
+
 ---
 
-## 5. Performance Lab: Methodology & Benchmarks
+## 6. Performance Lab: Methodology & Benchmarks
 
 The Performance Lab ([`src/features/performance/`](src/features/performance/)) is an isolated module designed to stress-test DOM virtualization using a deterministic **10,000-row × 24-column synthetic dataset (240,000 cells)**.
 
@@ -171,25 +220,25 @@ The Performance Lab ([`src/features/performance/`](src/features/performance/)) i
 - Measurements are honest: missing or unrun metrics report **"Not measured"**, and failures report **"Unavailable"** (never false `0 ms`).
 - Diagnostic targets are reference objectives, not guaranteed thresholds across all hardware.
 
-### Benchmark Definitions & Observed Production Results
+### Benchmark Definitions & Verification
 
-Measurements collected directly in headless Google Chrome running on a reference 16-core Linux workstation against the production build:
+The Performance Lab validates the structural scalability of the virtualized grid and provides runtime diagnostic metrics:
 
-| Metric                           | Target (Diagnostic) | Observed (Production Build)                   | Measurement Methodology                                                                                                                          |
+| Metric                           | Target (Diagnostic) | Verified Assertion                            | Measurement Methodology                                                                                                                          |
 | -------------------------------- | ------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Dataset Generation**           | Diagnostic          | **5.3 ms**                                    | Pure in-memory generation of 10,000 × 24 numbers via `performance.now()`. Kept completely separate from React layout/render cycles.              |
-| **Time to Grid Ready**           | `< 500 ms`          | **27.5 ms**                                   | Measured from the user's "Run Benchmark" click to the first committed virtual grid layout using `performance.now()` in a `useLayoutEffect` hook. |
-| **Mounted Body Rows**            | `< 100 rows`        | **20 rows**                                   | Querying actual mounted DOM elements (`[data-virtual-row="true"]`). Proves that only the visible viewport window + overscan is mounted.          |
-| **Canonical Model Recompute**    | `< 10 ms`           | **< 1.0 ms** _(0.00 ms displayed)_            | Direct invocation of `calculateModel(seedAssumptions)` across 24 periods. Pure calculation duration separate from React state updates.           |
-| **Edit Input-to-Commit Latency** | p95 `< 100 ms`      | **p50: 0.1 ms \| p95: 0.1 ms** _(30 samples)_ | Measures duration from cell edit event to committed layout state across 30 real synthetic cell edit iterations.                                  |
+| **Dataset Generation**           | Diagnostic          | In-memory benchmark                           | Pure in-memory generation of 10,000 × 24 numbers via `performance.now()`. Kept completely separate from React layout/render cycles.              |
+| **Time to Grid Ready**           | `< 500 ms`          | Target objective                              | Measured from the user's "Run Benchmark" click to the first committed virtual grid layout using `performance.now()` in a `useLayoutEffect` hook. |
+| **Mounted Body Rows**            | `< 100 rows`        | **< 100 rows verified (E2E assertion)**        | Querying actual mounted DOM elements (`[data-virtual-row="true"]`). Proves that only the visible viewport window + overscan is mounted.          |
+| **Canonical Model Recompute**    | `< 10 ms`           | Target objective                              | Direct invocation of `calculateModel(seedAssumptions)` across 24 periods. Pure calculation duration separate from React state updates.           |
+| **Edit Input-to-Commit Latency** | p95 `< 100 ms`      | Target objective                              | Diagnostic measurement from cell edit event to committed layout state across real synthetic cell edit iterations.                                |
 
-> **Measurement Note:** Edit latency is accurately labeled as **input-to-commit latency** (measured to React commit/layout effect). It does not represent full browser frame presentation/paint time.
+> **Measurement Note:** Edit latency is labeled as **input-to-commit latency** (measured to React commit/layout effect). It does not represent full browser frame presentation/paint time. Timings vary by client CPU and browser execution engine; only the structural DOM virtualization row limit (`< 100` mounted rows out of 10,000) is enforced as an automated test invariant.
 
 ---
 
-## 6. Accessibility & Responsive Design
+## 7. Accessibility & Responsive Design
 
-- **WCAG 2.2 AA Compliance:** Zero automated Axe violations across all primary routes (Model Grid, Proposal Review, Trace Panel, History, Scenario Compare, Performance Lab).
+- **Zero Axe-core Violations in Listed Automated Test Flows:** Automated Axe-core scans pass with zero violations across all primary routes (Model Grid, Proposal Review, Trace Panel, History, Scenario Compare, Performance Lab). Note: automated scans verify automated rule compliance and do not substitute for a comprehensive manual accessibility review across all WCAG 2.2 criteria.
 - **Keyboard Navigation:** Full arrow key navigation across grid cells, `Enter` to edit / trace, `Escape` to cancel, and `Tab` through editable cells.
 - **Focus Management:** Focus returns to the invoking control when drawers and confirmation dialogs close.
 - **Reduced Motion Support:** `@media (prefers-reduced-motion: reduce)` disables non-essential animations and transitions.
@@ -197,9 +246,9 @@ Measurements collected directly in headless Google Chrome running on a reference
 
 ---
 
-## 7. Known Limitations & Prototype Boundaries
+## 8. Known Limitations & Prototype Boundaries
 
-1. **Simulated AI Provider:** Change proposals are generated deterministically by local mock templates. No live LLM or external API is queried.
+1. **Simulated AI Provider:** Change proposals are generated deterministically by local mock templates. No live LLM or external AI API is queried.
 2. **Synthetic Data Only:** The baseline figures ($750k starting revenue, $3M cash) and synthetic 10k grid are completely synthetic test fixtures.
-3. **Session-Scoped History:** Change history and undo snapshots exist in memory for the duration of the browser session; there is no persistent database.
+3. **Anonymous Bearer Sessions:** Sessions are authenticated via anonymous capability tokens (`X-Workspace-Token`), stored hashed (SHA-256) in PostgreSQL with 30-day inactivity expiration. No confidential user or company data is ever collected or stored.
 4. **Diagnostic Benchmarks:** Performance timings depend on the client machine's processor and browser engine and should be interpreted as diagnostic indicators.

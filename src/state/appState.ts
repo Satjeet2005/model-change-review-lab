@@ -27,8 +27,19 @@ export interface AppState {
   readonly validationError: string | null;
   readonly selectedTraceCellId: CellId | null;
   readonly changeHistory: readonly TransactionRecord[];
+  readonly canUndo: boolean;
+
+  // Backend persistence and synchronization state
+  readonly sessionId: string | null;
+  readonly stateVersion: number;
+  readonly isInitializing: boolean;
+  readonly isMutating: boolean;
+  readonly networkError: string | null;
+  readonly sessionExpiredNotice: boolean;
+  readonly configError: string | null;
 
   // V2 Proposal Workspace State
+  readonly workspaceEpoch: number;
   readonly proposalWorkspace: ProposalWorkspace | null;
   readonly archivedStaleWorkspaces: readonly ProposalWorkspace[];
   readonly activeGenerationRequestId: string | null;
@@ -41,7 +52,7 @@ export interface AppState {
  * Creates the initial application state.
  * Baseline and working assumptions are initialized independently from fresh seed objects.
  */
-export function createInitialState(): AppState {
+export function createInitialState(isInitializing = false): AppState {
   const baseline = createSeedAssumptions();
   const working = createSeedAssumptions();
   const calculatedWorkingModel = calculateModel(working);
@@ -59,6 +70,15 @@ export function createInitialState(): AppState {
     validationError: null,
     selectedTraceCellId: null,
     changeHistory: [],
+    canUndo: false,
+    sessionId: null,
+    stateVersion: 1,
+    isInitializing,
+    isMutating: false,
+    networkError: null,
+    sessionExpiredNotice: false,
+    configError: null,
+    workspaceEpoch: 0,
     proposalWorkspace: null,
     archivedStaleWorkspaces: [],
     activeGenerationRequestId: null,

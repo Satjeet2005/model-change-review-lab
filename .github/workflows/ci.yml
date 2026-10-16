@@ -12,13 +12,61 @@ concurrency:
 
 jobs:
   verify:
-    name: Lint, Typecheck, Test, Build & E2E
+    name: Full-Stack Verification (Postgres 16, Python 3.12, Node 22, Playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: mcrl_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:password@localhost:5432/mcrl_db
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:password@localhost:5432/mcrl_test_db
+      CORS_ORIGINS: http://localhost:4173,http://localhost:5173,http://127.0.0.1:4173,http://127.0.0.1:5173
+      VITE_API_BASE_URL: http://127.0.0.1:8000
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Python 3.12 and uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install backend dependencies (locked)
+        working-directory: backend
+        run: uv sync --locked
+
+      - name: Run Alembic database migrations
+        working-directory: backend
+        run: uv run alembic upgrade head
+
+      - name: Backend Ruff linter check
+        working-directory: backend
+        run: uv run ruff check app tests
+
+      - name: Backend Ruff format check
+        working-directory: backend
+        run: uv run ruff format --check app tests
+
+      - name: Backend pytest test suite
+        working-directory: backend
+        run: uv run pytest
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -26,26 +74,26 @@ jobs:
           node-version: 22
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: npm ci
 
-      - name: Typecheck
+      - name: Frontend typecheck
         run: npm run typecheck
 
-      - name: Lint
+      - name: Frontend lint
         run: npm run lint
 
-      - name: Check code formatting
+      - name: Frontend format check
         run: npm run format
 
-      - name: Run unit and integration tests
+      - name: Frontend unit & component tests
         run: npm test -- --run
 
-      - name: Build production bundle
+      - name: Build frontend production bundle
         run: npm run build
 
-      - name: Install Playwright Chromium
+      - name: Install Playwright Chromium with dependencies
         run: npx playwright install --with-deps chromium
 
-      - name: Run Playwright E2E and Accessibility tests
+      - name: Run Playwright E2E & Accessibility tests against live API and DB
         run: npm run test:e2e

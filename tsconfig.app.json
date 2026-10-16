@@ -37,5 +37,5 @@
     "noImplicitReturns": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src"]
+  "include": ["src", "shared"]
 }

@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CellId, PeriodIndex } from '@/domain/types';
 import { useAppState, useAppDispatch } from '@/state/AppProvider';
-import { formatCurrency, formatInteger, formatPercentage } from '@/domain/formatting';
+import { useAppCommands } from '@/api/useAppCommands';
+import {
+  formatCurrency,
+  formatInteger,
+  formatPercentage,
+  parseEditableValue
+} from '@/domain/formatting';
 
 export interface EditableAssumptionCellProps {
   cellId: CellId;
@@ -28,8 +34,9 @@ export function EditableAssumptionCell({
   onNavigate,
   onAdvance
 }: EditableAssumptionCellProps): React.JSX.Element {
-  const { editingCell, validationError } = useAppState();
+  const { editingCell, validationError, isMutating } = useAppState();
   const dispatch = useAppDispatch();
+  const commands = useAppCommands();
 
   const isEditing = editingCell === cellId;
   const isCellError = isEditing && Boolean(validationError);
@@ -72,6 +79,7 @@ export function EditableAssumptionCell({
   }
 
   function handleStartEdit() {
+    if (isMutating) return;
     let initialStr = String(value);
     if (displayUnit === 'percent') {
       initialStr = `${(value * 100).toFixed(1)}%`;
@@ -83,12 +91,21 @@ export function EditableAssumptionCell({
     });
   }
 
-  function handleCommit() {
-    dispatch({
-      type: 'DIRECT_EDIT_COMMIT',
-      cellId,
-      rawValue: draftValue
-    });
+  async function handleCommit() {
+    const isPercent = displayUnit === 'percent';
+    const parsed = parseEditableValue(draftValue, isPercent);
+    if (Number.isNaN(parsed)) {
+      dispatch({
+        type: 'DIRECT_EDIT_COMMIT',
+        cellId,
+        rawValue: draftValue
+      });
+      return;
+    }
+    const success = await commands.directEdit(cellId, parsed);
+    if (success) {
+      dispatch({ type: 'DIRECT_EDIT_CANCEL' });
+    }
   }
 
   function handleCancel() {

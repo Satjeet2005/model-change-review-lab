@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mcrl-db-prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mcrl}
+      POSTGRES_USER: ${POSTGRES_USER:-mcrl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in production}
+    # No published host ports; internal communication via Compose network
+    volumes:
+      - mcrl_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mcrl} -d ${POSTGRES_DB:-mcrl}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: mcrl-backend-prod
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mcrl}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-mcrl}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://app.yourdomain.com}
+      ENVIRONMENT: production
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+    # Internal listening port for Coolify reverse proxy routing (no host port published)
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/api/v1/health\")'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:?VITE_API_BASE_URL must be explicitly configured with the public HTTPS API domain (e.g. https://api.yourdomain.com)}
+    container_name: mcrl-frontend-prod
+    # Internal listening port for Coolify reverse proxy routing (no host port published)
+    expose:
+      - "80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: always
+
+volumes:
+  mcrl_pgdata:

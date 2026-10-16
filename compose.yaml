@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mcrl-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mcrl}
+      POSTGRES_USER: ${POSTGRES_USER:-mcrl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mcrl_dev_password}
+    ports:
+      - "${DB_BIND_IP:-127.0.0.1}:${DB_PORT:-5432}:5432"
+    volumes:
+      - mcrl_pgdata:/var/lib/postgresql/data
+      - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mcrl} -d ${POSTGRES_DB:-mcrl}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  mcrl_pgdata:

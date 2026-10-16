@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAppState, useAppDispatch } from '@/state/AppProvider';
+import { useAppCommands } from '@/api/useAppCommands';
 import { MockProposalProvider, PROPOSAL_PRESETS, ProposalTemplateId } from '@/domain/proposals';
 import { ProposalVariant, ProposalWorkspace } from '@/domain/types';
 import { cloneModelAssumptions, cloneProposalOperations } from '@/domain/operations';
@@ -10,18 +11,35 @@ export interface ProposalPromptSelectorProps {
 }
 
 export function ProposalPromptSelector({
-  provider = new MockProposalProvider()
+  provider
 }: ProposalPromptSelectorProps): React.JSX.Element {
-  const { workingAssumptions, revision, proposalStatus, proposalWorkspace, pendingProposal } =
-    useAppState();
+  const {
+    workingAssumptions,
+    revision,
+    proposalStatus,
+    proposalWorkspace,
+    pendingProposal,
+    isMutating
+  } = useAppState();
   const dispatch = useAppDispatch();
+  const commands = useAppCommands();
   const [generatingId, setGeneratingId] = useState<ProposalTemplateId | null>(null);
 
   const isGenerating = proposalStatus === 'generating';
   const hasActiveWorkspace = Boolean(proposalWorkspace || pendingProposal);
 
   async function handleSelectPreset(templateId: ProposalTemplateId) {
-    if (isGenerating || hasActiveWorkspace) return;
+    if (isGenerating || hasActiveWorkspace || isMutating) return;
+
+    if (!provider) {
+      setGeneratingId(templateId);
+      try {
+        await commands.generateProposal(templateId);
+      } finally {
+        setGeneratingId(null);
+      }
+      return;
+    }
 
     const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const requestRevision = revision;
@@ -131,7 +149,7 @@ export function ProposalPromptSelector({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={isGenerating || hasActiveWorkspace}
+                disabled={isGenerating || hasActiveWorkspace || isMutating}
                 onClick={() => handleSelectPreset(preset.id)}
                 title={
                   hasActiveWorkspace
