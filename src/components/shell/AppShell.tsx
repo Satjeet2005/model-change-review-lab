@@ -4,6 +4,7 @@ import { useAppCommands } from '@/api/useAppCommands';
 import { NavTabId } from '@/state/appState';
 import { Button } from '@/components/ui/Button';
 import { ResetDialog } from '@/components/history/ResetDialog';
+import { ColdBootToast } from '@/components/app/ColdBootToast';
 
 export interface AppShellProps {
   children: ReactNode;
@@ -203,14 +204,21 @@ export function AppShell({ children }: AppShellProps): React.JSX.Element {
             className="flex flex-col items-center justify-center p-12 text-center text-neutral-600"
           >
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3" />
-            <p className="text-sm font-medium">
+            <p className="text-sm font-medium text-neutral-800">
               Connecting to Model Change Review Lab workspace...
+            </p>
+            <p className="text-xs text-neutral-500 mt-2 max-w-md leading-relaxed">
+              The backend runs on Render's free tier. If the service was sleeping, cold boot
+              typically takes <strong>30–60 seconds (~50s)</strong>. Thank you for your patience!
             </p>
           </div>
         ) : (
           children
         )}
       </main>
+
+      {/* Free Tier Cold Boot Toast */}
+      <ColdBootToast isInitializing={isInitializing} />
 
       {/* Footer Landmark */}
       <footer className="border-t border-neutral-200 bg-white py-4 text-center text-xs text-neutral-500">
