@@ -1,254 +1,168 @@
 # Model Change Review Lab
 
-> **Notice:** This project is an independent engineering prototype developed as a proof of concept. It has **no official affiliation with Drivetrain AI**, uses **100% synthetic financial data**, and simulates AI proposals using a deterministic local provider with **zero external AI APIs, LLMs, or network services**.
+**Review model changes before they reach canonical state.**
 
----
+[![CI](https://github.com/Satjeet2005/model-change-review-lab/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Satjeet2005/model-change-review-lab/actions/workflows/ci.yml) · [Architecture](#architecture-and-data-flow) · [Local setup](#local-development) · [Deployment guide](docs/DEPLOYMENT.md) · [Portfolio](https://satjeet.me)
 
-## 1. Project Overview
+> **Scope:** An independent engineering proof of concept with no official affiliation with Drivetrain AI. It uses synthetic financial data and deterministic local proposal templates. It does **not** call a live LLM or external AI API.
 
-The **Model Change Review Lab** explores an architectural question in financial planning and business modeling:
+## The problem
 
-> _How can an AI-assisted planning application allow generative suggestions and complex multi-cell scenario updates while preserving strict financial integrity, reviewability, auditability, and mathematical traceability?_
+A proposed change to a financial model can affect multiple linked cells. Users need to inspect the exact changes before applying them, avoid committing proposals based on stale state, and trace calculated outputs back to their inputs.
 
-Spreadsheet and FP&A tools traditionally struggle when automation mutates cell values directly without reviewable transaction boundaries. The Model Change Review Lab demonstrates an architectural pattern designed to solve this problem:
+Model Change Review Lab explores a review-first workflow: suggestions remain isolated drafts until they are validated and explicitly accepted.
 
-1. **Independent Verification & Proposal Lifecycle:** AI outputs are structured _proposals_ (lists of targeted cell operations), never direct mutations. They are previewed in isolation, inspected via clear before/after diffs, edited if necessary, and accepted or rejected by human operators.
-2. **Atomic Transaction Commits:** Accepting a proposal commits all operations atomically into the canonical state tree, recording a transactional snapshot with before/after audit records.
-3. **Monotonic Revision Safety:** Any concurrent edit, undo, or reset increments the revision token, instantly invalidating stale proposals and preventing accidental overwrites.
-4. **DAG Formula Traceability:** Every calculated metric across 24 monthly periods is connected to an explicit directed acyclic graph (DAG) node, enabling users to click any output cell to inspect its exact formula, dependencies, and underlying inputs.
-5. **Headless Virtualization & Performance Stress-Testing:** An isolated Performance Lab demonstrates row windowing across a 10,000-row × 24-column dataset (240,000 cells) using `@tanstack/react-virtual`, providing honest, reproducible benchmarks.
+## What it demonstrates
 
----
+- **Review before write** — proposals are isolated operations with before/after diffs; users can edit or reject them without changing the canonical model.
+- **Atomic commits** — accepted operations are validated and committed together, with persisted transaction history.
+- **Revision-aware safety** — later edits invalidate stale proposals rather than allowing them to overwrite newer state.
+- **Formula traceability** — a dependency DAG connects calculated outputs to the formulas and inputs behind them.
+- **Virtualized data grids** — a separate Performance Lab exercises a 10,000 × 24 synthetic grid (240,000 cells) without passing that fixture through the financial calculation engine.
 
-## 2. Architecture & Data Flow
+## Architecture and data flow
 
-The application follows a unidirectional data flow separating pure domain logic from React UI components.
-
-### System Architecture Flow
-
-The system uses a full-stack architecture with a strict boundary between persistence and financial mathematics:
-
-- **Browser Client (React 19 + TypeScript):** Owns the single and authoritative financial calculation engine (`calculateModel`), Trace DAG indexer (`buildTraceIndex`), scenario variance comparator, and virtualization lab. Financial formulas are never duplicated on the server.
-- **Backend API (FastAPI + Python 3.12):** Authoritatively validates assumption inputs, enforces row-level locking (`SELECT ... FOR UPDATE`), serializes monotonic revision updates, persists proposal workspaces/variants, and logs transaction history.
-- **Database (PostgreSQL 16):** Stores hashed capability tokens (`X-Workspace-Token`), session assumptions, active/archived workspaces, and audit transactions with foreign keys and partial unique indexes.
-
-See [`docs/implementation/FULL_STACK_BACKEND_ARCHITECTURE.md`](docs/implementation/FULL_STACK_BACKEND_ARCHITECTURE.md) for full architectural specifications, schema definitions, and concurrency controls.
+| Layer | Responsibility |
+| --- | --- |
+| React 19 + TypeScript | UI, the single authoritative calculation engine, proposal review, formula tracing, and scenario comparison |
+| FastAPI + Python 3.12 | API validation, revision coordination, persistence workflows, and transaction history |
+| PostgreSQL 16 | Workspace/session state, hashed capability tokens, and audit transactions |
+| Verification | GitHub Actions CI, Vitest, pytest, Playwright, and Axe accessibility checks |
 
 ```mermaid
 flowchart TD
-    UserAction["User Action / Interaction"] --> Dispatch["Action Dispatcher"]
-    Dispatch --> Reducer["App Reducer (useReducer)"]
-    Dispatch --> ApiCommands["API Commands (useAppCommands)"]
-    ApiCommands --> FastAPI["FastAPI Backend (/api/v1)"]
-    FastAPI --> Postgres[("PostgreSQL 16 Database")]
-
-    subgraph DomainLayer["Client Domain Engine (Single Source of Financial Math)"]
-        Validation["Validation Engine (src/domain/validation.ts)"]
-        Calculation["Canonical Engine (src/domain/calculation.ts)"]
-        TraceDAG["Trace DAG Indexer (src/domain/trace.ts)"]
-        Transactions["Transaction Committer (src/domain/transactions.ts)"]
-        Comparison["Scenario Variance (src/domain/scenarioComparison.ts)"]
-    end
-
-    FastAPI -.->|"Session Snapshot (Assumptions & Rev)"| Reducer
-    Reducer --> Calculation
-    Calculation --> TraceDAG
-    Calculation --> Comparison
-
-    subgraph StateTree["Canonical State (src/state/appState.ts)"]
-        BaselineModel["Immutable Baseline Model"]
-        WorkingModel["Active Working Model (Authoritative Server Revision)"]
-        ChangeHistory["Committed Transaction History Stack"]
-        ProposalState["Isolated Proposal Workspace State (Variants)"]
-    end
-
-    Calculation --> StateTree
-    StateTree --> UIViews["React UI Shell & Pages"]
-
-    subgraph UIViews["User Interface Views"]
-        ModelGrid["Model Planning Grid (24 Periods)"]
-        ProposalReview["Proposal Review Panel & Diff (Up to 3 Variants)"]
-        TracePanel["Dependency Trace Panel"]
-        HistoryPanel["Change History & Undo"]
-        ScenarioPage["Scenario Compare (Chart & Variance Table)"]
-        PerfLab["Performance Lab (10,000 × 24 Virtual Grid)"]
-    end
+    User[User action] --> UI[React + TypeScript]
+    UI --> Domain[Validation + calculation engine + trace DAG]
+    UI --> API[FastAPI API]
+    API --> DB[(PostgreSQL)]
+    API -. session snapshot and revision .-> UI
+    Domain --> Views[Planning grid, proposal review, history, trace, scenarios]
 ```
 
-### Proposal Workflow State Machine
+The key boundary is deliberate: financial formulas are implemented only in the TypeScript domain engine; the backend validates and persists state and coordinates concurrent mutations.
+
+### Proposal lifecycle
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Idle: Application Initialized
-    Idle --> Generating: Click Preset Button
-    Generating --> ReviewReady: Local Mock Provider Emits Proposal
-    ReviewReady --> Editing: Click 'Edit Values'
-    Editing --> ReviewReady: Update Draft Operations
-    ReviewReady --> Accepted: Click 'Accept & Apply' (Atomic Commit)
-    ReviewReady --> Rejected: Click 'Reject & Discard'
-    ReviewReady --> Stale: Canonical Model Revision Changes
-    Stale --> Rejected: Dismiss Stale Proposal
-    Accepted --> Idle: State Updated & Revision Incremented
-    Rejected --> Idle: Draft Cleared (Zero Model Change)
+    [*] --> Idle
+    Idle --> Draft: Generate local proposal
+    Draft --> Review: Inspect before/after changes
+    Review --> Editing: Edit proposed operations
+    Editing --> Review
+    Review --> Accepted: Validate and commit atomically
+    Review --> Rejected: Reject draft
+    Review --> Stale: Canonical revision changes
+    Stale --> Rejected: Dismiss stale proposal
+    Accepted --> Idle
+    Rejected --> Idle
 ```
 
----
+## Engineering invariants
 
-## 3. Financial Model Formulas & Invariants
+- Suggestions are proposed operations, never direct model mutations.
+- Calculations have one authoritative implementation in `src/domain/calculation.ts`.
+- Formula tracing is indexed in `src/domain/trace.ts` and supports output-to-input inspection.
+- Revision changes invalidate stale proposals; backend mutations use database concurrency controls.
+- Performance figures are reported as measured, unavailable, or targets—not fabricated zeroes or guaranteed timings.
 
-All calculations are executed exclusively by the pure function `calculateModel` in [`src/domain/calculation.ts`](src/domain/calculation.ts). No financial formulas exist in React components.
+See the [full backend architecture](docs/implementation/FULL_STACK_BACKEND_ARCHITECTURE.md) for schema, locking, persistence, and concurrency details.
 
-All monetary values are rounded to two decimal places using `roundMoney(v) = Math.round(v * 100) / 100`.
+## Local development
 
-### Exact Domain Formulas
+### Requirements
 
-| Metric                 | Horizon Period  | Formula Specification                               |
-| ---------------------- | --------------- | --------------------------------------------------- |
-| **Revenue ($)**        | Period $t = 1$  | `roundMoney(startingRevenue * (1 + growthRate[1]))` |
-| **Revenue ($)**        | Period $t > 1$  | `roundMoney(revenue[t-1] * (1 + growthRate[t]))`    |
-| **Total FTE**          | All periods     | `engineeringFte[t] + otherFte[t]` _(integer)_       |
-| **Payroll ($)**        | All periods     | `roundMoney(totalFte[t] * costPerFte[t])`           |
-| **Total OpEx ($)**     | All periods     | `roundMoney(payroll[t] + otherOpex[t])`             |
-| **EBITDA ($)**         | All periods     | `roundMoney(revenue[t] - totalOpex[t])`             |
-| **Ending Cash ($)**    | Period $t = 1$  | `roundMoney(startingCash + ebitda[1])`              |
-| **Ending Cash ($)**    | Period $t > 1$  | `roundMoney(endingCash[t-1] + ebitda[t])`           |
-| **Cumulative Revenue** | Horizon M01–M24 | `sum(revenue[1] .. revenue[24])`                    |
+- Node.js 22
+- Python 3.12 and [`uv`](https://docs.astral.sh/uv/)
+- Docker with Docker Compose
 
-### Validation Rules
+### 1. Start PostgreSQL
 
-All manual cell edits and proposed operations are validated prior to commit:
-
-| Field                   | Type       | Min Bound       | Max Bound           | Rejection Handling                   |
-| ----------------------- | ---------- | --------------- | ------------------- | ------------------------------------ |
-| **Starting Revenue**    | Currency   | $0.00           | $1,000,000,000.00   | Rejected with inline error           |
-| **Starting Cash**       | Currency   | $0.00           | $1,000,000,000.00   | Rejected with inline error           |
-| **Revenue Growth Rate** | Percentage | -50.0% (-0.50)  | +50.0% (+0.50)      | Rejected with inline error           |
-| **Engineering FTE**     | Integer    | 0               | 1,000               | Non-integers / out of range rejected |
-| **Other FTE**           | Integer    | 0               | 1,000               | Non-integers / out of range rejected |
-| **Cost per FTE**        | Currency   | $1.00           | $100,000.00         | Negative / excessive values rejected |
-| **Other OpEx**          | Currency   | $0.00           | $1,000,000,000.00   | Negative / excessive values rejected |
-
----
-
-## 4. Setup, Development & Verification Commands
-
-### Prerequisites
-
-- **Node.js:** v22.x LTS (primary CI and local development)
-- **Python:** v3.12.x and `uv` package manager
-- **Docker & Docker Compose:** for PostgreSQL 16 container
-
-### 1. Database Setup (PostgreSQL 16)
+From the repository root:
 
 ```bash
-# Start PostgreSQL 16 container (bound securely to 127.0.0.1:5432)
 docker compose up -d
-
-# Verify database health
-docker compose ps
 ```
 
-### 2. Backend Setup & Verification (FastAPI + SQLAlchemy 2.x)
+The development database is bound to `127.0.0.1:5432` by default. Backend defaults are configured in `backend/app/config.py`; override them through environment variables when needed.
+
+### 2. Start the API
+
+In terminal 1:
 
 ```bash
 cd backend
-
-# Install locked Python dependencies
 uv sync --locked
-
-# Apply Alembic database migrations
 uv run alembic upgrade head
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
 
-# Run linter and formatting checks
+### 3. Start the frontend
+
+In terminal 2, from the repository root:
+
+```bash
+npm ci
+cp .env.example .env
+npm run dev
+```
+
+The example config points the frontend to `http://127.0.0.1:8000`. The API's interactive documentation is available at `http://127.0.0.1:8000/docs` while the backend is running.
+
+## Verification
+
+GitHub Actions runs the backend and frontend checks against PostgreSQL 16, Python 3.12, and Node.js 22, including Playwright end-to-end and automated accessibility tests.
+
+Run individual checks locally:
+
+```bash
+# Backend, from backend/
 uv run ruff check app tests
 uv run ruff format --check app tests
-
-# Run backend pytest test suite against isolated test database (39 tests)
-# Note: pytest requires TEST_DATABASE_URL (defaults to mcrl_test) and fails closed
-# if pointed at the application database (mcrl) to prevent accidental truncation.
 uv run pytest
 
-cd ..
-```
-
-### 3. Frontend Setup & Verification (React 19 + TypeScript)
-
-```bash
-# Install frontend dependencies
-npm ci
-
-# Typecheck codebase with strict TypeScript
+# Frontend, from the repository root
 npm run typecheck
-
-# Run ESLint source analysis
 npm run lint
-
-# Verify Prettier code formatting
 npm run format
-
-# Run full Vitest unit & component test suite (24 suites, 196 tests)
 npm test -- --run
-
-# Compile production bundle with backend API target
-VITE_API_BASE_URL=http://127.0.0.1:8000 npm run build
-```
-
-### 4. End-to-End & Automated Accessibility Testing (Playwright)
-
-```bash
-# Run Playwright E2E integration and Axe WCAG 2.2 AA accessibility tests (10 tests)
-# (Orchestrates FastAPI backend and Vite preview automatically)
+npm run build
 npm run test:e2e
 ```
 
-### 5. Production Deployment (Microsoft Azure Linux VM + Coolify, Docker Compose)
+The backend test suite uses an isolated test database. Keep `TEST_DATABASE_URL` pointed at a separate test database; the test setup is designed to fail closed rather than run against the application database.
 
-Model Change Review Lab provides a dedicated containerized production setup:
+## Financial model rules
 
-- **Azure & Coolify Deployment:** Refer to the comprehensive deployment guide in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for Ubuntu 24.04 LTS Azure VM provisioning, Network Security Group (NSG) configurations, self-hosted Coolify setup, environment variable matrices, and backup procedures.
-- **Docker Compose Production:** `docker compose -f compose.prod.yaml up -d --build` builds the backend container, isolates PostgreSQL inside an internal Docker network (no public port exposure), and auto-applies Alembic migrations on startup.
+All calculations use the pure `calculateModel` function in `src/domain/calculation.ts`. Monetary outputs are rounded to two decimal places with `roundMoney(v) = Math.round(v * 100) / 100`.
 
----
+| Metric | Formula |
+| --- | --- |
+| Revenue, first period | `roundMoney(startingRevenue * (1 + growthRate[1]))` |
+| Revenue, later periods | `roundMoney(revenue[t-1] * (1 + growthRate[t]))` |
+| Total FTE | `engineeringFte[t] + otherFte[t]` |
+| Payroll | `roundMoney(totalFte[t] * costPerFte[t])` |
+| Total OpEx | `roundMoney(payroll[t] + otherOpex[t])` |
+| EBITDA | `roundMoney(revenue[t] - totalOpex[t])` |
+| Ending cash, first period | `roundMoney(startingCash + ebitda[1])` |
+| Ending cash, later periods | `roundMoney(endingCash[t-1] + ebitda[t])` |
 
-## 6. Performance Lab: Methodology & Benchmarks
+Input validation rejects values outside defined bounds, including invalid growth rates, non-integer FTE, and negative or excessive monetary inputs. Formula definitions and validation ranges are implemented in the domain layer.
 
-The Performance Lab ([`src/features/performance/`](src/features/performance/)) is an isolated module designed to stress-test DOM virtualization using a deterministic **10,000-row × 24-column synthetic dataset (240,000 cells)**.
+## Performance and accessibility notes
 
-### Non-Negotiable Invariants
+The Performance Lab uses a deterministic 10,000 × 24 synthetic grid to examine virtualization. **Only the mounted-row limit is an enforced E2E invariant**; time-based values such as readiness and edit-to-commit latency are diagnostic targets that vary with hardware and browser. The benchmark does not measure full browser paint time.
 
-- The synthetic dataset is generated inside the performance feature and is **never passed to `calculateModel`**.
-- Measurements are honest: missing or unrun metrics report **"Not measured"**, and failures report **"Unavailable"** (never false `0 ms`).
-- Diagnostic targets are reference objectives, not guaranteed thresholds across all hardware.
+Automated Axe scans cover primary application routes, and responsive checks include 375px viewports. Automated accessibility tests are useful checks, not a substitute for a complete manual accessibility audit.
 
-### Benchmark Definitions & Verification
+## Limitations
 
-The Performance Lab validates the structural scalability of the virtualized grid and provides runtime diagnostic metrics:
+- Proposal generation uses deterministic local templates; there is no live LLM or external AI API integration.
+- All model and performance data are synthetic. Do not use real or confidential financial data.
+- This is an engineering prototype, not production financial software or financial advice.
+- Sessions use anonymous capability tokens with a 30-day inactivity expiration; review the security and deployment docs before adapting the design for another use case.
+- Performance timings depend on the browser and machine. Diagnostic targets are not universal guarantees.
 
-| Metric                           | Target (Diagnostic) | Verified Assertion                            | Measurement Methodology                                                                                                                          |
-| -------------------------------- | ------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Dataset Generation**           | Diagnostic          | In-memory benchmark                           | Pure in-memory generation of 10,000 × 24 numbers via `performance.now()`. Kept completely separate from React layout/render cycles.              |
-| **Time to Grid Ready**           | `< 500 ms`          | Target objective                              | Measured from the user's "Run Benchmark" click to the first committed virtual grid layout using `performance.now()` in a `useLayoutEffect` hook. |
-| **Mounted Body Rows**            | `< 100 rows`        | **< 100 rows verified (E2E assertion)**        | Querying actual mounted DOM elements (`[data-virtual-row="true"]`). Proves that only the visible viewport window + overscan is mounted.          |
-| **Canonical Model Recompute**    | `< 10 ms`           | Target objective                              | Direct invocation of `calculateModel(seedAssumptions)` across 24 periods. Pure calculation duration separate from React state updates.           |
-| **Edit Input-to-Commit Latency** | p95 `< 100 ms`      | Target objective                              | Diagnostic measurement from cell edit event to committed layout state across real synthetic cell edit iterations.                                |
+## Deployment
 
-> **Measurement Note:** Edit latency is labeled as **input-to-commit latency** (measured to React commit/layout effect). It does not represent full browser frame presentation/paint time. Timings vary by client CPU and browser execution engine; only the structural DOM virtualization row limit (`< 100` mounted rows out of 10,000) is enforced as an automated test invariant.
-
----
-
-## 7. Accessibility & Responsive Design
-
-- **Zero Axe-core Violations in Listed Automated Test Flows:** Automated Axe-core scans pass with zero violations across all primary routes (Model Grid, Proposal Review, Trace Panel, History, Scenario Compare, Performance Lab). Note: automated scans verify automated rule compliance and do not substitute for a comprehensive manual accessibility review across all WCAG 2.2 criteria.
-- **Keyboard Navigation:** Full arrow key navigation across grid cells, `Enter` to edit / trace, `Escape` to cancel, and `Tab` through editable cells.
-- **Focus Management:** Focus returns to the invoking control when drawers and confirmation dialogs close.
-- **Reduced Motion Support:** `@media (prefers-reduced-motion: reduce)` disables non-essential animations and transitions.
-- **Responsive Viewports:** Tested down to 375px mobile viewports with zero page-level horizontal overflow. Complex tables scroll within dedicated containers.
-
----
-
-## 8. Known Limitations & Prototype Boundaries
-
-1. **Simulated AI Provider:** Change proposals are generated deterministically by local mock templates. No live LLM or external AI API is queried.
-2. **Synthetic Data Only:** The baseline figures ($750k starting revenue, $3M cash) and synthetic 10k grid are completely synthetic test fixtures.
-3. **Anonymous Bearer Sessions:** Sessions are authenticated via anonymous capability tokens (`X-Workspace-Token`), stored hashed (SHA-256) in PostgreSQL with 30-day inactivity expiration. No confidential user or company data is ever collected or stored.
-4. **Diagnostic Benchmarks:** Performance timings depend on the client machine's processor and browser engine and should be interpreted as diagnostic indicators.
+See the [production deployment guide](docs/DEPLOYMENT.md) for the Azure Linux VM, Docker Compose, Coolify, TLS, environment variables, and backup procedure. The [CI workflow](.github/workflows/ci.yml) documents the automated verification pipeline.
